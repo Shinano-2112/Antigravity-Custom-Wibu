@@ -29,6 +29,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     STORAGE_WORKING_STYLE,
     STORAGE_WORKING_TEXTS,
     STORAGE_WORKING_ICON,
+    STORAGE_WORKING_SHOW_TIMER,
     CHECK_SVG,
     INPUT_STYLES,
     WORKING_STYLES,
@@ -353,7 +354,13 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
                   <div id="agy-working-preview-el" data-testid="agent-loading" style="color: #a1a1aa; font-size: 13px;"><span>Working</span></div>
                 </div>
               </div>
-              <button id="agy-working-preview-shuffle" type="button" style="padding: 5px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: #e4e4e7; font-size: 11.5px; cursor: pointer; white-space: nowrap;">🎲 Đổi câu</button>
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: #d4d4d8; cursor: pointer; white-space: nowrap; padding: 4px 9px; border-radius: 7px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);" title="Hiện đồng hồ đếm thời gian AI đang xử lý (áp dụng cho cả 5 style: Starlight, Chibi, Mặc định, Mecha, HUD Pill)">
+                  <input id="agy-working-timer-toggle" type="checkbox" ${st.workingShowTimer !== false ? 'checked' : ''} style="accent-color: ${mainTheme.primary}; cursor: pointer;" />
+                  ⏱ Hiện thời gian
+                </label>
+                <button id="agy-working-preview-shuffle" type="button" style="padding: 5px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: #e4e4e7; font-size: 11.5px; cursor: pointer; white-space: nowrap;">🎲 Đổi câu</button>
+              </div>
             </div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px;">
               ${Object.entries(workingStyleMap).map(([key, item]) => {
@@ -1023,7 +1030,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
             throw new Error('Config must be a JSON object');
           }
           const allowed = {};
-          const keys = ['themeEnabled', 'themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting', 'mechaWorking', 'workingStyle', 'workingTexts', 'workingIcon'];
+          const keys = ['themeEnabled', 'themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting', 'mechaWorking', 'workingStyle', 'workingTexts', 'workingIcon', 'workingShowTimer'];
           keys.forEach((k) => {
             if (parsed[k] !== undefined) allowed[k] = parsed[k];
           });
@@ -1059,6 +1066,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       localStorage.removeItem(STORAGE_WORKING_STYLE);
       localStorage.removeItem(STORAGE_WORKING_TEXTS);
       localStorage.removeItem(STORAGE_WORKING_ICON);
+      localStorage.removeItem(STORAGE_WORKING_SHOW_TIMER);
       localStorage.removeItem(STORAGE_TASK_VOICE_ENABLED);
       localStorage.removeItem(STORAGE_TASK_VOICE_VOL);
       localStorage.removeItem(STORAGE_CUSTOM_GREETINGS);
@@ -1088,7 +1096,8 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         mechaWorking: true,
         workingStyle: 'mecha',
         workingTexts: [],
-        workingIcon: ''
+        workingIcon: '',
+        workingShowTimer: true
       });
       syncModeButtons(defMode);
       syncMasterToggleUi();
@@ -1372,6 +1381,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     const workingCustomToggle = container.querySelector('#agy-working-custom-toggle');
     const workingCustomBox = container.querySelector('#agy-working-custom-box');
     const workingPreviewEl = container.querySelector('#agy-working-preview-el');
+    const workingTimerToggle = container.querySelector('#agy-working-timer-toggle');
     const workingPreviewShuffle = container.querySelector('#agy-working-preview-shuffle');
     const workingLinesEl = container.querySelector('#agy-working-lines');
     const workingTextSaveBtn = container.querySelector('#agy-working-text-save');
@@ -1389,6 +1399,9 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       const isOpen = workingCustomBox && workingCustomBox.style.display !== 'none';
       if (workingCustomToggle) {
         workingCustomToggle.textContent = `${meta.badge} · Working ${isOpen ? '▴' : '▾'}`;
+      }
+      if (workingTimerToggle) {
+        workingTimerToggle.checked = cur.workingShowTimer !== false;
       }
       container.querySelectorAll('.agy-working-style-card').forEach((card) => {
         const isSel = card.dataset.wstyle === cur.workingStyle;
@@ -1426,6 +1439,12 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       workingCustomToggle.addEventListener('click', () => {
         const isHidden = workingCustomBox.style.display === 'none';
         workingCustomBox.style.display = isHidden ? 'flex' : 'none';
+        syncWorkingUiState();
+      });
+    }
+    if (workingTimerToggle) {
+      workingTimerToggle.addEventListener('change', (e) => {
+        applyTheme({ workingShowTimer: e.target.checked });
         syncWorkingUiState();
       });
     }
