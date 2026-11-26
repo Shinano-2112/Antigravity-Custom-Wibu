@@ -19,6 +19,7 @@ Trình tùy biến giao diện nền động, màn hình khởi động (Boot HU
 - **Khắc phục lỗi nền video bị tối nháy khi hover / mở tooltip trên Windows:** Cố định thẻ `<video>` trên 1 đường render GPU nhất quán (`isolation: isolate` + `filter: brightness(1.001)`), tránh Windows DirectComposition (MPO) chuyển đổi qua lại làm lệch độ sáng nền khi tương tác UI.
 - **Sửa lỗi menu thanh tiêu đề bị trong suốt:** Khôi phục nền tối đặc (`var(--card)`) kèm viền và đổ bóng rõ nét cho các menu `Antigravity`, `Workspace`, `View`, `Window` và các popup `.surface-opaque` / `[data-browser-occluder="true"]`, vẫn giữ **0 `:has()`** và **0 live `backdrop-filter: blur()`**.
 - **Ẩn watermark & quầng mờ mặc định ở màn hình New Conversation:** Loại bỏ logo Antigravity mờ (`svg.home-greeting-mark`) và lớp quầng sáng (`data-agy-home-glow`) đè lên nhân vật/ảnh nền khi mở hội thoại mới.
+- **Tự động thay thế câu chào mặc định sang phong cách Sensei:** Khi chưa nhập danh sách câu chào riêng trong Studio, các câu chào mặc định của Antigravity sẽ tự đổi tương ứng thành *"What are we building today, Sensei?"*, *"It's great to see you again, Sensei. What shall we do next?"*, và *"What do you want me to do, Sensei?"* (vẫn có thể tự soạn đè thêm trong Studio hoặc tắt bằng ô `Câu chào Custom`).
 
 ---
 

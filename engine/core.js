@@ -2252,10 +2252,40 @@
     }
   }
 
-  function pickTawaGreeting() {
+  const DEFAULT_SENSEI_GREETINGS = [
+    {
+      rx: /^(?:Hey\s+[^,]{1,40},\s+what\s+should\s+we\s+build\s+today\??|What\s+(?:should|are)\s+we\s+build(?:ing)?\s+today\??)$/i,
+      text: 'What are we building today, Sensei?'
+    },
+    {
+      rx: /^Good\s+to\s+see\s+you,\s+[^.]{1,40}\.\s+What'?s\s+next\??$/i,
+      text: "It's great to see you again, Sensei. What shall we do next?"
+    },
+    {
+      rx: /^(?:Welcome\s+back[,.!\s]+[^.!?]{0,40}(?:[.!?]\s*(?:Where\s+should\s+we\s+pick\s+up|What'?s\s+next|What\s+should\s+we\s+build)[^.!?]{0,40}[.!?]?)?|Where\s+should\s+we\s+pick\s+up\??)$/i,
+      text: 'What do you want me to do, Sensei?'
+    }
+  ];
+
+  function resolveDefaultSenseiGreeting(origText) {
+    const clean = String(origText || '').trim();
+    for (let i = 0; i < DEFAULT_SENSEI_GREETINGS.length; i++) {
+      if (DEFAULT_SENSEI_GREETINGS[i].rx.test(clean)) {
+        return DEFAULT_SENSEI_GREETINGS[i].text;
+      }
+    }
+    const pool = DEFAULT_SENSEI_GREETINGS.map((item) => item.text);
+    const prev = window.__AGY_LAST_GREETING__;
+    const choices = pool.length > 1 ? pool.filter((s) => s !== prev) : pool;
+    const picked = choices[Math.floor(Math.random() * choices.length)] || pool[0];
+    window.__AGY_LAST_GREETING__ = picked;
+    return picked;
+  }
+
+  function pickTawaGreeting(origText) {
     const st = getState();
     const pool = Array.isArray(st.customGreetings) ? st.customGreetings.filter(Boolean) : [];
-    if (!pool.length) return '';
+    if (!pool.length) return resolveDefaultSenseiGreeting(origText);
     const prev = window.__AGY_LAST_GREETING__;
     const choices = pool.length > 1 ? pool.filter(s => s !== prev) : pool;
     const picked = choices[Math.floor(Math.random() * choices.length)] || pool[0];
@@ -2265,8 +2295,7 @@
 
   function syncEmptyGreeting(stOverride) {
     const st = stOverride || getState();
-    const hasCustom = Array.isArray(st.customGreetings) && st.customGreetings.some(Boolean);
-    if (!st.tawaGreeting || (!hasCustom)) {
+    if (!st.tawaGreeting) {
       if (window.__AGY_GREETING_ACTIVE__) {
         window.__AGY_GREETING_ACTIVE__ = false;
         document.querySelectorAll('[data-agy-greeting]').forEach((el) => {
@@ -2296,7 +2325,7 @@
       if (!GREETING_RX.test(txt)) continue;
       if (!el.hasAttribute('data-agy-greeting') || window.__AGY_GREETING_NEED_FRESH__ || el.dataset.agyGreetingOrig !== txt) {
         el.dataset.agyGreetingOrig = txt;
-        el.setAttribute('data-agy-greeting', pickTawaGreeting());
+        el.setAttribute('data-agy-greeting', pickTawaGreeting(txt));
         window.__AGY_GREETING_NEED_FRESH__ = false;
       }
       window.__AGY_GREETING_ACTIVE__ = true;
