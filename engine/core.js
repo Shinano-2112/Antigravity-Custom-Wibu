@@ -25,21 +25,30 @@
     if (!base) {
       return Promise.reject(new Error(`Media server base unavailable for lazy module: ${name}`));
     }
+    const host = document.head || document.documentElement;
+    if (!host) {
+      return Promise.reject(new Error(`Document host unavailable for lazy module: ${name}`));
+    }
     const promise = new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = `${base}/engine/${name}.js?v=${encodeURIComponent(BUILD_VER)}`;
       s.async = true;
       s.onload = () => {
         s.remove();
-        mods[name] = true;
-        resolve(window[globalKey]);
+        if (typeof window[globalKey] === 'function') {
+          mods[name] = true;
+          resolve(window[globalKey]);
+        } else {
+          delete mods[name];
+          reject(new Error(`Lazy module missing export: ${name}`));
+        }
       };
       s.onerror = () => {
         s.remove();
         delete mods[name];
         reject(new Error(`Failed to load lazy module: ${name}`));
       };
-      (document.head || document.documentElement).appendChild(s);
+      host.appendChild(s);
     });
     mods[name] = promise;
     return promise;
@@ -301,7 +310,7 @@
 
     const activeUrl = activeCustomOverride !== undefined
       ? activeCustomOverride
-      : (meta.activeStorageKey ? (localStorage.getItem(meta.activeStorageKey) ?? init[meta.activeInitKey] ?? '') : '');
+      : (meta.activeStorageKey ? (safeGetStorage(meta.activeStorageKey) ?? init[meta.activeInitKey] ?? '') : '');
     if (activeUrl) {
       const activeKey = canonicalMediaKey(activeUrl);
       if (activeKey && !byKey.has(activeKey)) {
@@ -381,6 +390,14 @@
     return normalizeGreetingLines(init.customGreetings);
   }
 
+  function safeGetStorage(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+
   function invalidateStateCache() {
     window.__AGY_STATE_CACHE__ = null;
   }
@@ -390,53 +407,58 @@
       return window.__AGY_STATE_CACHE__;
     }
     const init = window.__AGY_INITIAL_CONFIG__ || {};
-    const rawTheme = localStorage.getItem(STORAGE_THEME) || init.themeName || DEFAULT_THEME_KEY;
+    const rawTheme = safeGetStorage(STORAGE_THEME) || init.themeName || DEFAULT_THEME_KEY;
     const themeName = THEMES[rawTheme] ? rawTheme : DEFAULT_THEME_KEY;
-    const rawBubble = localStorage.getItem(STORAGE_BUBBLE) || init.bubbleName || themeName;
+    const rawBubble = safeGetStorage(STORAGE_BUBBLE) || init.bubbleName || themeName;
     const bubbleName = THEMES[rawBubble] ? rawBubble : themeName;
-    const inputStyle = localStorage.getItem(STORAGE_INPUT) || init.inputStyle || 'sync';
-    const dimming = parseInt(localStorage.getItem(STORAGE_DIMMING) || (init.dimming !== undefined ? init.dimming : '69'), 10);
-    const wpEnabled = localStorage.getItem(STORAGE_WP_ENABLED) !== null
-      ? localStorage.getItem(STORAGE_WP_ENABLED) !== 'false'
+    const inputStyle = safeGetStorage(STORAGE_INPUT) || init.inputStyle || 'sync';
+    const dimming = parseInt(safeGetStorage(STORAGE_DIMMING) || (init.dimming !== undefined ? init.dimming : '69'), 10);
+    const storedWpEnabled = safeGetStorage(STORAGE_WP_ENABLED);
+    const wpEnabled = storedWpEnabled !== null
+      ? storedWpEnabled !== 'false'
       : (init.wpEnabled !== undefined ? init.wpEnabled : true);
     const activeThObj = THEMES[themeName] || THEMES[DEFAULT_THEME_KEY] || {};
-    const storedMode = localStorage.getItem(STORAGE_WP_MODE);
+    const storedMode = safeGetStorage(STORAGE_WP_MODE);
     const wpMode = (storedMode === 'video' || storedMode === 'image')
       ? storedMode
       : ((init.wpMode === 'video' || init.wpMode === 'image') ? init.wpMode : (activeThObj.wallpaperVideo ? 'video' : 'image'));
-    const rawCustomWp = localStorage.getItem(STORAGE_CUSTOM_WP);
+    const rawCustomWp = safeGetStorage(STORAGE_CUSTOM_WP);
     const customWp = rawCustomWp !== null ? rawCustomWp : (init.customWp || '');
-    const rawCustomVid = localStorage.getItem(STORAGE_CUSTOM_VIDEO);
+    const rawCustomVid = safeGetStorage(STORAGE_CUSTOM_VIDEO);
     const customVideo = rawCustomVid !== null ? rawCustomVid : (init.customVideo || '');
     const savedImages = getMediaLibrary('image', init, customWp);
     const savedVideos = getMediaLibrary('video', init, customVideo);
     const taskVoices = getMediaLibrary('audio', init, '');
-    const taskVoiceEnabled = localStorage.getItem(STORAGE_TASK_VOICE_ENABLED) !== null
-      ? localStorage.getItem(STORAGE_TASK_VOICE_ENABLED) !== 'false'
+    const storedTaskVoice = safeGetStorage(STORAGE_TASK_VOICE_ENABLED);
+    const taskVoiceEnabled = storedTaskVoice !== null
+      ? storedTaskVoice !== 'false'
       : (init.taskVoiceEnabled !== undefined ? init.taskVoiceEnabled : true);
-    const rawTaskVol = localStorage.getItem(STORAGE_TASK_VOICE_VOL) ?? init.taskVoiceVol;
+    const rawTaskVol = safeGetStorage(STORAGE_TASK_VOICE_VOL) ?? init.taskVoiceVol;
     const taskVoiceVol = rawTaskVol !== undefined && rawTaskVol !== null && rawTaskVol !== ''
       ? Math.max(0, Math.min(100, parseInt(rawTaskVol, 10)))
       : 85;
     const customGreetings = readCustomGreetings(init);
-    const userAvatar = localStorage.getItem(STORAGE_USER_AVATAR) ?? init.userAvatar ?? '';
-    const agentAvatar = localStorage.getItem(STORAGE_AGENT_AVATAR) ?? init.agentAvatar ?? '';
-    const rawBlur = localStorage.getItem(STORAGE_GLASS_BLUR) ?? init.glassBlur;
+    const userAvatar = safeGetStorage(STORAGE_USER_AVATAR) ?? init.userAvatar ?? '';
+    const agentAvatar = safeGetStorage(STORAGE_AGENT_AVATAR) ?? init.agentAvatar ?? '';
+    const rawBlur = safeGetStorage(STORAGE_GLASS_BLUR) ?? init.glassBlur;
     const glassBlur = rawBlur !== undefined && rawBlur !== null && rawBlur !== '' ? parseInt(rawBlur, 10) : 3;
-    const rawAvSize = localStorage.getItem(STORAGE_AVATAR_SIZE) ?? init.avatarSize;
+    const rawAvSize = safeGetStorage(STORAGE_AVATAR_SIZE) ?? init.avatarSize;
     const avatarSize = rawAvSize !== undefined && rawAvSize !== null && rawAvSize !== '' ? parseInt(rawAvSize, 10) : 32;
-    const rawAvRad = localStorage.getItem(STORAGE_AVATAR_RADIUS) ?? init.avatarRadius;
+    const rawAvRad = safeGetStorage(STORAGE_AVATAR_RADIUS) ?? init.avatarRadius;
     const avatarRadius = rawAvRad !== undefined && rawAvRad !== null && rawAvRad !== '' ? parseInt(rawAvRad, 10) : 50;
-    const bootIntro = localStorage.getItem(STORAGE_BOOT_INTRO) !== null
-      ? localStorage.getItem(STORAGE_BOOT_INTRO) !== 'false'
+    const storedBootIntro = safeGetStorage(STORAGE_BOOT_INTRO);
+    const bootIntro = storedBootIntro !== null
+      ? storedBootIntro !== 'false'
       : (init.bootIntro !== undefined ? init.bootIntro : true);
-    const bootOperator = localStorage.getItem(STORAGE_BOOT_OPERATOR) ?? init.bootOperator ?? '';
-    const bootPassHash = localStorage.getItem(STORAGE_BOOT_PASS_HASH) ?? init.bootPassHash ?? '';
-    const sketchReveal = localStorage.getItem(STORAGE_SKETCH_REVEAL) !== null
-      ? localStorage.getItem(STORAGE_SKETCH_REVEAL) !== 'false'
+    const bootOperator = safeGetStorage(STORAGE_BOOT_OPERATOR) ?? init.bootOperator ?? '';
+    const bootPassHash = safeGetStorage(STORAGE_BOOT_PASS_HASH) ?? init.bootPassHash ?? '';
+    const storedSketchReveal = safeGetStorage(STORAGE_SKETCH_REVEAL);
+    const sketchReveal = storedSketchReveal !== null
+      ? storedSketchReveal !== 'false'
       : (init.sketchReveal !== undefined ? init.sketchReveal : true);
-    const tawaGreeting = localStorage.getItem(STORAGE_TAWA_GREETING) !== null
-      ? localStorage.getItem(STORAGE_TAWA_GREETING) !== 'false'
+    const storedTawaGreeting = safeGetStorage(STORAGE_TAWA_GREETING);
+    const tawaGreeting = storedTawaGreeting !== null
+      ? storedTawaGreeting !== 'false'
       : (init.tawaGreeting !== undefined ? init.tawaGreeting : true);
     const cached = {
       themeName, bubbleName, inputStyle, dimming, wpEnabled, wpMode,
@@ -593,12 +615,14 @@
       css += `body[data-has-browser-hole="true"] .agy-shell[data-agy-hole-active="1"]::after,body[data-has-browser-hole="true"] .agy-shell[data-agy-hole-active="1"] > #agy-live-bg-layer{clip-path:${ms.holeClip}!important;}`;
     }
     if (css === window.__AGY_LAST_METRICS_CSS__) return;
+    const host = document.head || document.documentElement;
+    if (!host) return;
     window.__AGY_LAST_METRICS_CSS__ = css;
     let el = document.getElementById('antigravity-custom-theme-metrics');
     if (!el) {
       el = document.createElement('style');
       el.id = 'antigravity-custom-theme-metrics';
-      (document.head || document.documentElement).appendChild(el);
+      host.appendChild(el);
     }
     el.textContent = css;
   }
@@ -1029,15 +1053,56 @@
     if (st) st.remove();
   }
 
-  function mountBootSequence(forceReplay = false) {
+  function clearBootRetryTimer() {
+    if (window.__AGY_BOOT_RETRY_TIMER__) {
+      clearTimeout(window.__AGY_BOOT_RETRY_TIMER__);
+      window.__AGY_BOOT_RETRY_TIMER__ = 0;
+    }
+  }
+
+  function mountBootSequence(forceReplay = false, attempt = 0) {
     const st = getState();
-    if (!forceReplay && (!st.bootIntro || window.__AGY_BOOT_PLAYED__)) {
+    if (!forceReplay && (!st.bootIntro || window.__AGY_BOOT_PLAYED__ || window.__AGY_BOOT_LOADING__)) {
       return;
     }
-    window.__AGY_BOOT_PLAYED__ = true;
+    if (!document.body || !document.head) {
+      if (attempt < 15) {
+        clearBootRetryTimer();
+        window.__AGY_BOOT_RETRY_TIMER__ = setTimeout(() => {
+          window.__AGY_BOOT_RETRY_TIMER__ = 0;
+          mountBootSequence(forceReplay, attempt + 1);
+        }, 80);
+      }
+      return;
+    }
+    clearBootRetryTimer();
+    window.__AGY_BOOT_LOADING__ = true;
     loadLazyModule('boot')
-      .then((fn) => { if (typeof fn === 'function') fn(window.__AGY_INTERNAL__, true); })
+      .then((fn) => {
+        window.__AGY_BOOT_LOADING__ = false;
+        if (!forceReplay && window.__AGY_BOOT_PLAYED__) return;
+        if (!document.body || !document.head) {
+          throw new Error('DOM not ready for boot overlay');
+        }
+        if (typeof fn === 'function') {
+          window.__AGY_BOOT_PLAYED__ = true;
+          fn(window.__AGY_INTERNAL__, true);
+        } else {
+          throw new Error('Boot module missing export');
+        }
+      })
       .catch(() => {
+        window.__AGY_BOOT_LOADING__ = false;
+        if (attempt < 4) {
+          const delay = [180, 400, 800, 1400][attempt] || 1000;
+          clearBootRetryTimer();
+          window.__AGY_BOOT_RETRY_TIMER__ = setTimeout(() => {
+            window.__AGY_BOOT_RETRY_TIMER__ = 0;
+            mountBootSequence(forceReplay, attempt + 1);
+          }, delay);
+          return;
+        }
+        window.__AGY_BOOT_PLAYED__ = true;
         window.__AGY_BOOT_FINISHED__ = true;
         scheduleRevealWhenReady(true);
       });
@@ -1153,11 +1218,13 @@
     const wpVideoUrl = resolveMediaUrl(st.customVideo || mainTheme.wallpaperVideo || '');
     const isVideoMode = Boolean(st.wpEnabled && st.wpMode === 'video' && wpVideoUrl);
 
+    const styleHost = document.head || document.documentElement;
+    if (!styleHost) return;
     let styleEl = document.getElementById('antigravity-custom-theme-active');
     if (!styleEl) {
       styleEl = document.createElement('style');
       styleEl.id = 'antigravity-custom-theme-active';
-      document.head.appendChild(styleEl);
+      styleHost.appendChild(styleEl);
     }
 
     const overlayAlpha = mainTheme.clearBackdrop
@@ -1954,6 +2021,9 @@
 
   function removeCustomTheme() {
     clearTitleBarTimers();
+    clearStartupWatchdog();
+    clearBootRetryTimer();
+    window.__AGY_BOOT_LOADING__ = false;
     clearRevealRaf();
     teardownBootOverlay();
     stopTaskAudio();
@@ -1973,6 +2043,7 @@
       try { window.__AGY_MODAL_OBSERVER__.disconnect(); } catch (e) {}
       window.__AGY_MODAL_OBSERVER__ = null;
     }
+    window.__AGY_OBSERVER_ROOT__ = null;
     if (window.__AGY_TICK_RAF__) {
       cancelAnimationFrame(window.__AGY_TICK_RAF__);
       window.__AGY_TICK_RAF__ = 0;
@@ -2037,16 +2108,6 @@
   window.__ANTIGRAVITY_APPLY_CUSTOM_THEME__ = applyTheme;
   window.__ANTIGRAVITY_REMOVE_CUSTOM_THEME__ = removeCustomTheme;
   window.__ANTIGRAVITY_OPEN_THEME_MODAL__ = openCustomThemeModal;
-
-  function bootstrapEngineDom() {
-    applyTheme();
-    mountBootSequence(false);
-  }
-  if (document.body && document.head) {
-    bootstrapEngineDom();
-  } else {
-    document.addEventListener('DOMContentLoaded', bootstrapEngineDom, { once: true });
-  }
 
   function openCustomThemeModal() {
     loadLazyModule('studio')
@@ -2540,8 +2601,89 @@
     mountBootSequence, triggerSketchBloomReveal
   };
 
+  function attachDomObserver() {
+    const observeRoot = document.body || document.documentElement;
+    if (!observeRoot) return false;
+    if (window.__AGY_MODAL_OBSERVER__ && window.__AGY_OBSERVER_ROOT__ === observeRoot) {
+      return true;
+    }
+    if (window.__AGY_MODAL_OBSERVER__) {
+      try { window.__AGY_MODAL_OBSERVER__.disconnect(); } catch (e) {}
+    }
+    window.__AGY_MODAL_OBSERVER__ = new MutationObserver(scheduleTick);
+    window.__AGY_OBSERVER_ROOT__ = observeRoot;
+    window.__AGY_MODAL_OBSERVER__.observe(observeRoot, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-has-browser-hole', 'data-browser-hole']
+    });
+    return true;
+  }
+
+  function clearStartupWatchdog() {
+    if (Array.isArray(window.__AGY_STARTUP_TIMERS__)) {
+      window.__AGY_STARTUP_TIMERS__.forEach((id) => clearTimeout(id));
+    }
+    window.__AGY_STARTUP_TIMERS__ = [];
+    if (window.__AGY_DCL_HANDLER__) {
+      document.removeEventListener('DOMContentLoaded', window.__AGY_DCL_HANDLER__);
+      window.__AGY_DCL_HANDLER__ = null;
+    }
+    if (window.__AGY_LOAD_HANDLER__) {
+      window.removeEventListener('load', window.__AGY_LOAD_HANDLER__);
+      window.__AGY_LOAD_HANDLER__ = null;
+    }
+  }
+
+  function ensureBootstrapped(forceMetrics = false, forceApply = false) {
+    if (!document.head || !document.body) {
+      attachDomObserver();
+      return false;
+    }
+    attachDomObserver();
+    if (forceApply || !document.getElementById('antigravity-custom-theme-active')) {
+      applyTheme({}, { skipSave: true });
+    }
+    mountBootSequence(false);
+    tick(forceMetrics);
+    return true;
+  }
+
+  function scheduleStartupWatchdog() {
+    clearStartupWatchdog();
+    const onReady = () => ensureBootstrapped(true, false);
+    if (document.readyState === 'loading') {
+      window.__AGY_DCL_HANDLER__ = onReady;
+      document.addEventListener('DOMContentLoaded', onReady, { once: true });
+    }
+    if (document.readyState !== 'complete') {
+      window.__AGY_LOAD_HANDLER__ = onReady;
+      window.addEventListener('load', onReady, { once: true });
+    }
+    const checkDelays = [120, 350, 750, 1400, 2600, 4500];
+    window.__AGY_STARTUP_TIMERS__ = checkDelays.map((ms) => setTimeout(() => {
+      const ready = ensureBootstrapped(true, false);
+      const st = getState();
+      const shell = findActiveShell();
+      const hasSidebarBtn = Boolean(document.getElementById('agy-custom-theme-sidebar-btn'));
+      const hasLiveBg = !st.wpEnabled || Boolean(document.getElementById('agy-live-bg-layer'));
+      const bootSettled = !st.bootIntro || Boolean(window.__AGY_BOOT_PLAYED__ || window.__AGY_BOOT_LOADING__);
+      if (ready && shell && hasSidebarBtn && hasLiveBg && bootSettled && document.readyState === 'complete') {
+        clearStartupWatchdog();
+      }
+    }, ms));
+  }
+
+  window.__AGY_ENSURE_BOOTSTRAPPED__ = () => ensureBootstrapped(true, false);
+
   invalidateStateCache();
   clearTitleBarTimers();
+  clearStartupWatchdog();
+  clearBootRetryTimer();
+  if (!window.__AGY_LOADED_MODS__ || !window.__AGY_LOADED_MODS__.boot || typeof window.__AGY_LOADED_MODS__.boot.then !== 'function') {
+    window.__AGY_BOOT_LOADING__ = false;
+  }
   if (window.__AGY_TICK_RAF__) {
     cancelAnimationFrame(window.__AGY_TICK_RAF__);
     window.__AGY_TICK_RAF__ = 0;
@@ -2618,19 +2760,13 @@
   window.__AGY_SIDE_EL__ = null;
   window.__AGY_METRICS_SHELL__ = null;
   if (window.__AGY_MODAL_OBSERVER__) {
-    window.__AGY_MODAL_OBSERVER__.disconnect();
+    try { window.__AGY_MODAL_OBSERVER__.disconnect(); } catch (e) {}
+    window.__AGY_MODAL_OBSERVER__ = null;
   }
-  window.__AGY_MODAL_OBSERVER__ = new MutationObserver(scheduleTick);
-  const observeRoot = document.body || document.documentElement;
-  if (observeRoot) {
-    window.__AGY_MODAL_OBSERVER__.observe(observeRoot, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['data-has-browser-hole', 'data-browser-hole']
-    });
-  }
-  tick(true);
+  window.__AGY_OBSERVER_ROOT__ = null;
+
+  ensureBootstrapped(true, true);
+  scheduleStartupWatchdog();
 
   return 'Antigravity Custom Theme Engine Ready!';
 })();

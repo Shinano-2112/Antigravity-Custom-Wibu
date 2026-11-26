@@ -269,6 +269,50 @@ fn run_session_loop(
         Ok(())
     };
 
+    let inject_on_nav = |ws: &mut WsClient,
+                         next_id: &mut u64,
+                         doc_script_id: &mut Option<String>,
+                         pending_doc_script_call_id: &mut Option<u64>|
+     -> Result<()> {
+        let _ = send_cdp(ws, next_id, "Page.setBypassCSP", json!({ "enabled": true }));
+        let _ = send_cdp(
+            ws,
+            next_id,
+            "Runtime.addBinding",
+            json!({ "name": "agySaveThemeConfig" }),
+        );
+        let Some(src) =
+            build_injected_source(paths, md5_cache, media_port, missing_logged, echo_stdout)
+        else {
+            return Ok(());
+        };
+        if doc_script_id.is_none() && pending_doc_script_call_id.is_none() {
+            let reg_id = send_cdp(
+                ws,
+                next_id,
+                "Page.addScriptToEvaluateOnNewDocument",
+                json!({ "source": &src }),
+            )?;
+            *pending_doc_script_call_id = Some(reg_id);
+        }
+        let mut guarded = String::with_capacity(src.len() + 140);
+        guarded.push_str(
+            "if (typeof window.__AGY_ENSURE_BOOTSTRAPPED__ === 'function') { window.__AGY_ENSURE_BOOTSTRAPPED__(); } else {\n",
+        );
+        guarded.push_str(&src);
+        guarded.push_str("\n}");
+        send_cdp(
+            ws,
+            next_id,
+            "Runtime.evaluate",
+            json!({ "expression": &guarded, "awaitPromise": false }),
+        )?;
+        drop(guarded);
+        drop(src);
+        trim_working_set();
+        Ok(())
+    };
+
     // Enable Page (navigation + new-document script) + Page.setBypassCSP (local HTTP media).
     // Deliberately omit `Runtime.enable`: Runtime.addBinding + Runtime.bindingCalled + Runtime.evaluate
     // work without it, avoiding Electron V8 stack-trace & RemoteObject heap retention.
@@ -409,7 +453,7 @@ fn run_session_loop(
                             .map(Value::is_null)
                             .unwrap_or(true);
                     if is_top_frame
-                        && inject_full(
+                        && inject_on_nav(
                             &mut ws,
                             &mut next_id,
                             &mut doc_script_id,
@@ -473,6 +517,7 @@ pub fn run(opts: DaemonOptions) -> Result<()> {
     );
 
     let mut last_port: Option<u16> = None;
+    let mut consecutive_fetch_failures: u32 = 0;
     let mut last_payload_stamp = file_stamp(&paths.payload_js);
     let mut last_themes_stamp = file_stamp(&paths.themes_json);
     let mut last_engine_stamp = file_stamp(&paths.engine_js);
@@ -544,52 +589,83 @@ pub fn run(opts: DaemonOptions) -> Result<()> {
             }
         }
 
-        if last_scan.elapsed() >= Duration::from_millis(1500) {
+        let has_sessions = !sessions.lock().unwrap().is_empty();
+        let scan_interval = if has_sessions || consecutive_fetch_failures >= 4 {
+            Duration::from_millis(1500)
+        } else {
+            Duration::from_millis(300)
+        };
+
+        if last_scan.elapsed() >= scan_interval {
             last_scan = Instant::now();
             if let Some(info) = read_port_info() {
-                if last_port.is_some() && last_port != Some(info.port) {
-                    close_all_sessions(&sessions);
+                if last_port != Some(info.port) {
+                    if last_port.is_some() {
+                        close_all_sessions(&sessions);
+                    }
+                    consecutive_fetch_failures = 0;
                 }
                 last_port = Some(info.port);
 
-                if let Ok(targets) = fetch_targets(info.port, Duration::from_millis(1800)) {
-                    let pages = filter_antigravity_pages(targets);
-                    let live_ids: HashSet<String> = pages.iter().map(|p| p.id.clone()).collect();
+                let fetch_timeout = if has_sessions {
+                    Duration::from_millis(1500)
+                } else {
+                    Duration::from_millis(500)
+                };
+                match fetch_targets(info.port, fetch_timeout) {
+                    Ok(targets) => {
+                        consecutive_fetch_failures = 0;
+                        let pages = filter_antigravity_pages(targets);
+                        let live_ids: HashSet<String> = pages.iter().map(|p| p.id.clone()).collect();
 
-                    {
-                        let mut map = sessions.lock().unwrap();
-                        let stale_ids: Vec<String> = map
-                            .keys()
-                            .filter(|id| !live_ids.contains(*id))
-                            .cloned()
-                            .collect();
-                        for id in stale_ids {
-                            if let Some(tx) = map.remove(&id) {
-                                let _ = tx.send(SessionCmd::Close);
+                        {
+                            let mut map = sessions.lock().unwrap();
+                            let stale_ids: Vec<String> = map
+                                .keys()
+                                .filter(|id| !live_ids.contains(*id))
+                                .cloned()
+                                .collect();
+                            for id in stale_ids {
+                                if let Some(tx) = map.remove(&id) {
+                                    let _ = tx.send(SessionCmd::Close);
+                                }
                             }
                         }
-                    }
 
-                    for page in pages {
-                        spawn_session(
-                            page,
-                            Arc::clone(&paths),
-                            Arc::clone(&md5_cache),
-                            media_port,
-                            Arc::clone(&sessions),
-                            Arc::clone(&missing_logged),
-                            opts.echo_stdout,
-                        );
+                        for page in pages {
+                            spawn_session(
+                                page,
+                                Arc::clone(&paths),
+                                Arc::clone(&md5_cache),
+                                media_port,
+                                Arc::clone(&sessions),
+                                Arc::clone(&missing_logged),
+                                opts.echo_stdout,
+                            );
+                        }
+                    }
+                    Err(_) => {
+                        consecutive_fetch_failures = consecutive_fetch_failures.saturating_add(1);
                     }
                 }
             } else if last_port.is_some() {
                 close_all_sessions(&sessions);
                 last_port = None;
+                consecutive_fetch_failures = 0;
                 trim_working_set();
+            } else {
+                consecutive_fetch_failures = 0;
             }
         }
 
-        let sleep_ms = if opts.watch_themes { 250 } else { 1000 };
+        let still_empty = sessions.lock().unwrap().is_empty();
+        let sleep_ms = if opts.watch_themes {
+            250
+        } else if still_empty && consecutive_fetch_failures < 4 {
+            250
+        } else {
+            1000
+        };
         thread::sleep(Duration::from_millis(sleep_ms));
     }
 
