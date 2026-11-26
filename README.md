@@ -25,6 +25,7 @@ Trình tùy biến giao diện nền động, màn hình khởi động (Boot HU
   - Chuyển toàn bộ chu trình khởi tạo DOM + `MutationObserver` về sau giai đoạn dọn dẹp, tự động gắn lại observer khi `document.body` sẵn sàng kèm startup watchdog tự ngắt, thêm cơ chế retry nạp `boot.js` (tối đa 5 lần), bọc `localStorage` an toàn lúc `document-start`, và chống gọi đè `scheduleRevealWhenReady` / ghi đè config lúc khởi động.
   - Tăng tốc chu kỳ dò cửa sổ mới trong daemon Rust (`300ms` khi chưa attach), tự cấp lại `Page.setBypassCSP` + `Runtime.addBinding` sau navigation và làm mới `addScriptToEvaluateOnNewDocument` mỗi lần lưu cấu hình.
   - Bảo vệ ghi `theme_config.json` bằng `Mutex` chống đọc nửa vời trên Windows, xả ngay thanh trượt (`Dim`/`Blur`/`Avatar`/`Âm lượng`) khi thả chuột + sự kiện `pagehide`/`beforeunload`, và bổ sung endpoint dự phòng `POST /save_config` (`sendBeacon`/`keepalive`) để không bao giờ thất lạc thay đổi khi tắt app đột ngột.
+- **Sửa lỗi khung chat bị chia đôi sáng/tối theo chiều dọc sau khi đóng bảng phụ bên phải:** Theo dõi thêm `[data-main-content-body]`, container bọc `[data-side-panel-body]`, tọa độ thực tế và `transitionend` để tự động xóa vùng `clip-path` cũ trên `.agy-shell::before` ngay khi bảng phụ trượt ra ngoài màn hình.
 
 ---
 

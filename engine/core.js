@@ -2092,6 +2092,10 @@
       window.__AGY_MODAL_OBSERVER__ = null;
     }
     window.__AGY_OBSERVER_ROOT__ = null;
+    if (window.__AGY_METRICS_RAF__) {
+      cancelAnimationFrame(window.__AGY_METRICS_RAF__);
+      window.__AGY_METRICS_RAF__ = 0;
+    }
     if (window.__AGY_TICK_RAF__) {
       cancelAnimationFrame(window.__AGY_TICK_RAF__);
       window.__AGY_TICK_RAF__ = 0;
@@ -2300,17 +2304,33 @@
       } else {
         delete sideBody.dataset.agyHasHole;
       }
-      if (window.__AGY_SHELL_RO__ && window.__AGY_SIDE_EL__ !== sideBody) {
-        try { window.__AGY_SHELL_RO__.observe(sideBody); } catch (e) {}
-        window.__AGY_SIDE_EL__ = sideBody;
+      if (window.__AGY_SHELL_RO__) {
+        if (window.__AGY_SIDE_EL__ !== sideBody) {
+          try { window.__AGY_SHELL_RO__.observe(sideBody); } catch (e) {}
+          window.__AGY_SIDE_EL__ = sideBody;
+        }
+        const sideWrap = sideBody.parentElement;
+        if (sideWrap && sideWrap !== shell && window.__AGY_SIDE_WRAP_EL__ !== sideWrap) {
+          try { window.__AGY_SHELL_RO__.observe(sideWrap); } catch (e) {}
+          window.__AGY_SIDE_WRAP_EL__ = sideWrap;
+        }
       }
       const sRect = sideBody.getBoundingClientRect();
+      const wrapRect = sideBody.parentElement ? sideBody.parentElement.getBoundingClientRect() : sRect;
+      const sideCs = getComputedStyle(sideBody);
+      const sideVisible = sideCs.display !== 'none'
+        && sideCs.visibility !== 'hidden'
+        && parseFloat(sideCs.opacity || '1') > 0.05
+        && wrapRect.width > 24
+        && wrapRect.height > 24
+        && wrapRect.left < shellRect.right - 8
+        && wrapRect.right > shellRect.left + 8;
       const hasContent = sideBody.children.length > 0;
-      if (hasContent && sRect.width > 24 && sRect.height > 24 && sRect.left < shellRect.right - 8 && sRect.right > shellRect.left + 8) {
-        const sl = Math.max(sw, Math.round(sRect.left - shellRect.left));
-        const st = Math.max(hdrBottom, Math.round(sRect.top - shellRect.top));
-        const sr = Math.min(Math.round(shellRect.width), Math.max(sl, Math.round(sRect.right - shellRect.left)));
-        const sb = Math.min(Math.round(shellRect.height), Math.max(st, Math.round(sRect.bottom - shellRect.top)));
+      if (hasContent && sideVisible && sRect.width > 24 && sRect.height > 24 && sRect.left < shellRect.right - 8 && sRect.right > shellRect.left + 8) {
+        const sl = Math.max(sw, Math.round(Math.max(sRect.left, wrapRect.left) - shellRect.left));
+        const st = Math.max(hdrBottom, Math.round(Math.max(sRect.top, wrapRect.top) - shellRect.top));
+        const sr = Math.min(Math.round(shellRect.width), Math.max(sl, Math.round(Math.min(sRect.right, wrapRect.right) - shellRect.left)));
+        const sb = Math.min(Math.round(shellRect.height), Math.max(st, Math.round(Math.min(sRect.bottom, wrapRect.bottom) - shellRect.top)));
         if (sr - sl > 20 && sb - st > 20) {
           ms.beforeClip = `polygon(evenodd, 0 0, 100% 0, 100% ${hdrBottom}px, ${sw}px ${hdrBottom}px, ${sw}px 100%, 0 100%, 0 0, ${sl}px ${st}px, ${sr}px ${st}px, ${sr}px ${sb}px, ${sl}px ${sb}px, ${sl}px ${st}px)`;
           flushMetricsStyle();
@@ -2351,6 +2371,8 @@
       window.__AGY_SHELL_RO__ = null;
       window.__AGY_HOLE_EL__ = null;
       window.__AGY_SIDE_EL__ = null;
+      window.__AGY_SIDE_WRAP_EL__ = null;
+      window.__AGY_MAIN_EL__ = null;
     }
     window.__AGY_METRICS_SHELL__ = shell;
     if (!window.__AGY_SHELL_RO__ && typeof ResizeObserver !== 'undefined') {
@@ -2360,14 +2382,27 @@
       if (sidebarPane) ro.observe(sidebarPane);
       window.__AGY_SHELL_RO__ = ro;
     }
+    const mainBody = shell.querySelector('[data-main-content-body="true"]');
+    if (window.__AGY_SHELL_RO__ && mainBody && window.__AGY_MAIN_EL__ !== mainBody) {
+      try { window.__AGY_SHELL_RO__.observe(mainBody); } catch (e) {}
+      window.__AGY_MAIN_EL__ = mainBody;
+    }
     const holeAttr = document.body ? (document.body.getAttribute('data-has-browser-hole') || '') : '';
     const holeAttrChanged = window.__AGY_LAST_HOLE_ATTR__ !== holeAttr;
     window.__AGY_LAST_HOLE_ATTR__ = holeAttr;
     const sideBody = shell.querySelector('[data-side-panel-body="true"]');
     const sideHasChild = sideBody ? (sideBody.children.length > 0) : false;
-    const sideChanged = window.__AGY_LAST_SIDE_EL__ !== sideBody || window.__AGY_LAST_SIDE_HAS_CHILD__ !== sideHasChild;
+    let sideGeo = '';
+    if (sideBody) {
+      const r = sideBody.getBoundingClientRect();
+      sideGeo = `${Math.round(r.left)},${Math.round(r.right)},${Math.round(r.width)}`;
+    }
+    const sideChanged = window.__AGY_LAST_SIDE_EL__ !== sideBody
+      || window.__AGY_LAST_SIDE_HAS_CHILD__ !== sideHasChild
+      || window.__AGY_LAST_SIDE_GEO__ !== sideGeo;
     window.__AGY_LAST_SIDE_EL__ = sideBody;
     window.__AGY_LAST_SIDE_HAS_CHILD__ = sideHasChild;
+    window.__AGY_LAST_SIDE_GEO__ = sideGeo;
     if (force || shellChanged || holeAttrChanged || sideChanged) {
       syncShellMetrics();
     }
@@ -2777,6 +2812,18 @@
   window.addEventListener('focus', () => syncTitleBarOverlay(), { signal: window.__AGY_SCROLL_AC__.signal });
   window.addEventListener('pagehide', () => flushPendingThemeSave(true), { signal: window.__AGY_SCROLL_AC__.signal });
   window.addEventListener('beforeunload', () => flushPendingThemeSave(true), { signal: window.__AGY_SCROLL_AC__.signal });
+  document.addEventListener('transitionend', (e) => {
+    const p = e.propertyName;
+    if (p !== 'transform' && p !== 'width' && p !== 'flex-basis' && p !== 'max-width' && p !== 'left' && p !== 'right') return;
+    const t = e.target;
+    if (!t || typeof t.closest !== 'function' || !t.closest('.agy-shell')) return;
+    if (!window.__AGY_METRICS_RAF__) {
+      window.__AGY_METRICS_RAF__ = requestAnimationFrame(() => {
+        window.__AGY_METRICS_RAF__ = 0;
+        syncShellMetrics();
+      });
+    }
+  }, { passive: true, signal: window.__AGY_SCROLL_AC__.signal });
   document.addEventListener('visibilitychange', () => {
     const vid = document.getElementById('agy-live-bg-video');
     if (document.hidden) {
@@ -2806,7 +2853,14 @@
 
   window.__AGY_HOLE_EL__ = null;
   window.__AGY_SIDE_EL__ = null;
+  window.__AGY_SIDE_WRAP_EL__ = null;
+  window.__AGY_MAIN_EL__ = null;
+  window.__AGY_LAST_SIDE_GEO__ = '';
   window.__AGY_METRICS_SHELL__ = null;
+  if (window.__AGY_METRICS_RAF__) {
+    cancelAnimationFrame(window.__AGY_METRICS_RAF__);
+    window.__AGY_METRICS_RAF__ = 0;
+  }
   if (window.__AGY_MODAL_OBSERVER__) {
     try { window.__AGY_MODAL_OBSERVER__.disconnect(); } catch (e) {}
     window.__AGY_MODAL_OBSERVER__ = null;
