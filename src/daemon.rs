@@ -269,6 +269,35 @@ fn run_session_loop(
         Ok(())
     };
 
+    let refresh_doc_script = |ws: &mut WsClient,
+                              next_id: &mut u64,
+                              doc_script_id: &mut Option<String>,
+                              pending_doc_script_call_id: &mut Option<u64>|
+     -> Result<()> {
+        let Some(src) =
+            build_injected_source(paths, md5_cache, media_port, missing_logged, echo_stdout)
+        else {
+            return Ok(());
+        };
+        if let Some(old_id) = doc_script_id.take() {
+            let _ = send_cdp(
+                ws,
+                next_id,
+                "Page.removeScriptToEvaluateOnNewDocument",
+                json!({ "identifier": old_id }),
+            );
+        }
+        let reg_id = send_cdp(
+            ws,
+            next_id,
+            "Page.addScriptToEvaluateOnNewDocument",
+            json!({ "source": &src }),
+        )?;
+        *pending_doc_script_call_id = Some(reg_id);
+        drop(src);
+        Ok(())
+    };
+
     let inject_on_nav = |ws: &mut WsClient,
                          next_id: &mut u64,
                          doc_script_id: &mut Option<String>,
@@ -430,6 +459,12 @@ fn run_session_loop(
                                             }
                                         }
                                     }
+                                    let _ = refresh_doc_script(
+                                        &mut ws,
+                                        &mut next_id,
+                                        &mut doc_script_id,
+                                        &mut pending_doc_script_call_id,
+                                    );
                                     trim_working_set();
                                 }
                                 Err(e) => append_log(

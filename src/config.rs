@@ -3,21 +3,50 @@ use serde_json::{Map, Value};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MAX_LOG_BYTES: u64 = 256 * 1024;
+static CONFIG_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn config_mutex() -> &'static Mutex<()> {
+    CONFIG_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn read_config_unlocked(path: &Path) -> Map<String, Value> {
+    for attempt in 0..2 {
+        match fs::read_to_string(path) {
+            Ok(raw) => {
+                if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) {
+                    return map;
+                }
+                if attempt == 0 && !raw.trim().is_empty() {
+                    thread::sleep(Duration::from_millis(15));
+                    continue;
+                }
+                return Map::new();
+            }
+            Err(_) => {
+                if attempt == 0 && path.exists() {
+                    thread::sleep(Duration::from_millis(15));
+                    continue;
+                }
+                return Map::new();
+            }
+        }
+    }
+    Map::new()
+}
 
 pub fn read_config(path: &Path) -> Map<String, Value> {
-    let Ok(raw) = fs::read_to_string(path) else {
-        return Map::new();
-    };
-    match serde_json::from_str::<Value>(&raw) {
-        Ok(Value::Object(map)) => map,
-        _ => Map::new(),
-    }
+    let _guard = config_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    read_config_unlocked(path)
 }
 
 pub fn save_config_merge(path: &Path, incoming: &Map<String, Value>) -> Result<Map<String, Value>> {
-    let mut merged = read_config(path);
+    let _guard = config_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    let mut merged = read_config_unlocked(path);
     for (k, v) in incoming {
         merged.insert(k.clone(), v.clone());
     }
@@ -30,8 +59,12 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     let mut tmp = path.as_os_str().to_os_string();
-    tmp.push(".tmp");
+    tmp.push(format!(".{}.{}.tmp", std::process::id(), stamp));
     let tmp_path = std::path::PathBuf::from(tmp);
 
     fs::write(&tmp_path, bytes)?;

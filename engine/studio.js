@@ -441,6 +441,11 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       valLabel.textContent = v + '%';
       applyTheme({ dimming: v }, { debounceSave: true });
     });
+    slider.addEventListener('change', (e) => {
+      const v = parseInt(e.target.value, 10);
+      valLabel.textContent = v + '%';
+      applyTheme({ dimming: v }, { debounceSave: false });
+    });
 
     const wpToggle = container.querySelector('#agy-wp-toggle');
     wpToggle.addEventListener('change', (e) => {
@@ -751,6 +756,11 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         if (blurLabel) blurLabel.textContent = v + 'px';
         applyTheme({ glassBlur: v }, { debounceSave: true });
       });
+      blurSlider.addEventListener('change', (e) => {
+        const v = parseInt(e.target.value, 10);
+        if (blurLabel) blurLabel.textContent = v + 'px';
+        applyTheme({ glassBlur: v }, { debounceSave: false });
+      });
     }
 
     const avSizeSlider = container.querySelector('#agy-av-size');
@@ -760,6 +770,11 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         const v = parseInt(e.target.value, 10);
         if (avSizeVal) avSizeVal.textContent = v + 'px';
         applyTheme({ avatarSize: v }, { debounceSave: true });
+      });
+      avSizeSlider.addEventListener('change', (e) => {
+        const v = parseInt(e.target.value, 10);
+        if (avSizeVal) avSizeVal.textContent = v + 'px';
+        applyTheme({ avatarSize: v }, { debounceSave: false });
       });
     }
 
@@ -772,6 +787,11 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         if (userAvPreview) userAvPreview.style.borderRadius = v + '%';
         if (agentAvPreview) agentAvPreview.style.borderRadius = v + '%';
         applyTheme({ avatarRadius: v }, { debounceSave: true });
+      });
+      avRadSlider.addEventListener('change', (e) => {
+        const v = parseInt(e.target.value, 10);
+        if (avRadVal) avRadVal.textContent = v + '%';
+        applyTheme({ avatarRadius: v }, { debounceSave: false });
       });
     }
 
@@ -972,6 +992,11 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         const v = parseInt(e.target.value, 10);
         if (taskVoiceVolVal) taskVoiceVolVal.textContent = v + '%';
         applyTheme({ taskVoiceVol: v }, { debounceSave: true });
+      });
+      taskVoiceVolSlider.addEventListener('change', (e) => {
+        const v = parseInt(e.target.value, 10);
+        if (taskVoiceVolVal) taskVoiceVolVal.textContent = v + '%';
+        applyTheme({ taskVoiceVol: v }, { debounceSave: false });
       });
     }
     if (taskVoiceTestBtn) {

@@ -807,6 +807,39 @@ fn handle_delete_media(
     )
 }
 
+fn handle_save_config(
+    stream: &mut TcpStream,
+    leftover: Vec<u8>,
+    content_length: Option<u64>,
+    is_chunked: bool,
+    paths: &AppPaths,
+) -> Result<()> {
+    let mut reader = BodyReader {
+        stream,
+        leftover,
+        pos: 0,
+    };
+    let body_bytes = match read_small_body(&mut reader, content_length, is_chunked, 512 * 1024) {
+        Ok(b) => b,
+        Err(msg) => return send_json(stream, "413 Payload Too Large", &json!({ "error": msg })),
+    };
+    let Ok(Value::Object(incoming)) = serde_json::from_slice::<Value>(&body_bytes) else {
+        return send_json(
+            stream,
+            "400 Bad Request",
+            &json!({ "error": "Expected JSON object" }),
+        );
+    };
+    match save_config_merge(&paths.config_json, &incoming) {
+        Ok(_) => send_json(stream, "200 OK", &json!({ "ok": true })),
+        Err(e) => send_json(
+            stream,
+            "500 Internal Server Error",
+            &json!({ "error": format!("Failed saving config: {e}") }),
+        ),
+    }
+}
+
 fn serve_file(
     stream: &mut TcpStream,
     file_path: &Path,
@@ -973,6 +1006,16 @@ fn handle_connection(mut stream: TcpStream, paths: &AppPaths, md5_cache: &Md5Cac
             is_chunked,
             paths,
             md5_cache,
+        );
+    }
+
+    if method == "POST" && pathname == "/save_config" {
+        return handle_save_config(
+            &mut stream,
+            leftover,
+            content_length,
+            is_chunked,
+            paths,
         );
     }
 
@@ -1156,6 +1199,23 @@ mod tests {
         assert_eq!(j_del["media"]["videos"].as_array().unwrap().len(), 0);
         let cfg_after = read_config(&paths.config_json);
         assert_eq!(cfg_after.get("customVideo"), Some(&Value::String(String::new())));
+
+        // POST /save_config persists settings atomically (HTTP fallback for rapid close)
+        let save_body = serde_json::to_vec(&json!({ "bootIntro": false, "dimming": 55 })).unwrap();
+        let req_save = [
+            format!(
+                "POST /save_config HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                save_body.len()
+            )
+            .into_bytes(),
+            save_body,
+        ]
+        .concat();
+        let (st_save, _, _) = http_raw(port, &req_save);
+        assert_eq!(st_save, 200);
+        let cfg_saved = read_config(&paths.config_json);
+        assert_eq!(cfg_saved.get("bootIntro"), Some(&Value::Bool(false)));
+        assert_eq!(cfg_saved.get("dimming"), Some(&json!(55)));
 
         srv.stop();
         let _ = fs::remove_dir_all(&root);
