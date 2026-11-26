@@ -68,20 +68,21 @@ Hệ thống vận hành theo mô hình hai lớp tách biệt nhằm giữ ổn
    - Theo dõi `dist/theme_payload.js` theo cặp `(modified, len)` để hot-reload đúng lúc, lưu thiết lập qua `Runtime.addBinding` (`agySaveThemeConfig`) bằng ghi file atomic (có khóa `Mutex`) vào `theme_config.json`, đồng bộ delta (`skipSave: true`) giữa các cửa sổ và tự làm mới `addScriptToEvaluateOnNewDocument`.
 
 2. **Bộ máy giao diện runtime (`engine/core.js`) & Trình đóng gói Lazy HTTP (`src/builder.rs`):**
-   - `agy-theme.exe build` trộn `themes/themes.json` + `engine/core.js` thành `dist/theme_payload.js` gọn nhẹ (**~134 KB**): chỉ nhúng nội tuyến các SVG nhỏ và 3 subset phông Mali WOFF2; các mô-đun nặng (`studio.js`, `boot.js`, `reveal.js`) cùng toàn bộ ảnh nền, video MP4, starfield, icon và voice được giữ làm đường dẫn tương đối để tải theo nhu cầu qua HTTP Media Server.
+   - `agy-theme.exe build` trộn `themes/themes.json` + `engine/core.js` thành `dist/theme_payload.js` gọn nhẹ (**~139 KB**): chỉ nhúng nội tuyến các SVG nhỏ; các mô-đun nặng (`studio.js`, `boot.js`, `reveal.js`) cùng phông Mali WOFF2, ảnh nền, video MP4, starfield, icon và voice được giữ làm đường dẫn tương đối để tải theo nhu cầu qua HTTP Media Server.
    - `engine/core.js` duy trì **0 `:has()`** toàn cục và **0 live `backdrop-filter: blur(...)`** toàn cục, dùng `ResizeObserver` thay cho polling trong `tick()`, dùng `blob:` URL kèm LRU revoke, tạm dừng `<video>` khi `document.hidden`, và pre-bake lớp kính mờ trên canvas offscreen (`syncPrebakedGlass`).
 
 ---
 
 ## Tính năng chính
 
+- **Công tắc Bật/Tắt nhanh toàn bộ Theme (`Theme: ON / Mặc định OFF`):** Quay về 100% giao diện mặc định gốc của Antigravity chỉ bằng 1 click ngay trên thanh tiêu đề Studio mà không cần gỡ mod hay tắt daemon, vẫn giữ trọn toàn bộ preset, ảnh/video nền, mật khẩu Boot HUD và câu chào đã lưu.
 - **Chế độ nền Ảnh tĩnh và Video động tách biệt:** Quản lý riêng danh sách ảnh tĩnh và video đã tải lên; tự động lưu lịch sử mỗi khi chọn tệp mới, hỗ trợ xem trước và xóa trực tiếp từng mục khỏi ổ cứng.
 - **Preset mặc định đi kèm:** Bao gồm `Gemini-chan Live` (`themes/assets/wallpapergeminichan.mp4`), `Furina Live` (`themes/assets/furina-bg.mp4`), `WLOP Cosmic` và `Midnight Obsidian`.
 - **Hiệu ứng vẽ nét và loang màu (Sketch Reveal):** Trích xuất đường nét trực tiếp từ khung hình video hoặc ảnh nền hiện tại qua thuật toán biên cạnh đa kênh màu kết hợp làm mượt đường cong.
 - **Màn hình khởi động (Boot HUD):** Giao diện khởi động Starfield kèm 4 đoạn voice Arisu-Tawa, có thể bật/tắt hoặc phát lại từ bảng cài đặt.
 - **Câu chào tùy chỉnh (Custom Greeting):** Cho phép tự soạn danh sách câu chào ngẫu nhiên hiển thị trên màn hình hội thoại trống bằng bộ phông chữ viết tay Mali đóng gói ngoại tuyến.
 - **Âm thanh báo hoàn thành tác vụ (Task Voice):** Hỗ trợ nạp nhiều tệp âm thanh (`.mp3`, `.wav`, `.ogg`, `.m4a`, `.aac`, `.flac`), phát ngẫu nhiên khi tác vụ kết thúc và giải phóng đối tượng âm thanh ngay sau khi phát xong.
-- **Trạng thái `Working` tùy biến Full Option:** 5 phong cách (`Mecha Telemetry`, `Schale HUD Pill`, `Starlight Shimmer`, `Chibi + Mali`, `Mặc định`), tự soạn câu trạng thái, nạp GIF/WebP Chibi mini và xem trước trực tiếp (Live Preview) ngay trong Studio.
+- **Trạng thái `Working` tùy biến Full Option:** 5 phong cách (`Mecha Telemetry`, `Schale HUD Pill`, `Starlight Shimmer`, `Chibi + Mali`, `Mặc định`), tùy chọn `⏱ Hiện thời gian` cho cả 5 style, tự soạn câu trạng thái, nạp GIF/WebP Chibi mini và xem trước trực tiếp (Live Preview) ngay trong Studio.
 - **Tùy biến khung chat và ảnh đại diện:** Thay đổi khung nhập liệu, bong bóng tin nhắn, ảnh đại diện User/Agent (tự nén WebP), độ tối nền và độ mờ kính.
 
 ---
