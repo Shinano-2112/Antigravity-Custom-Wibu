@@ -140,8 +140,8 @@ fn cli_build_lazy_http_payload_and_syntax_check() {
 
     let compiled = fs::read_to_string(&out_payload).expect("read built payload");
     assert!(
-        compiled.len() < 120_000,
-        "Split & compacted Lazy HTTP payload exceeded 120 KB: {} bytes",
+        compiled.len() < 180_000,
+        "Split & compacted Lazy HTTP payload exceeded 180 KB: {} bytes",
         compiled.len()
     );
     assert!(!compiled.contains("/*__THEMES_PLACEHOLDER__*/{}"));

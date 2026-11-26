@@ -34,6 +34,9 @@ Trình tùy biến giao diện nền động, màn hình khởi động (Boot HU
   - Cho phép quay về **100% giao diện mặc định gốc** của Antigravity chỉ trong 1 cú click (tự động tháo toàn bộ CSS custom, giải phóng video nền, tắt Boot HUD/câu chào/voice và trả thanh tiêu đề về nguyên bản) mà **không cần gỡ mod hay tắt daemon**.
   - Giữ nguyên nút **Custom theme** ở sidebar & Settings cùng toàn bộ preset, ảnh/video nền, mật khẩu Boot HUD và câu chào đã lưu — gạt lại **ON** là khôi phục tức thì (trạng thái ON/OFF được lưu bền vững qua `theme_config.json`).
 - **Tối ưu UX mục `Chat Avatars`:** Đổi nút `Off` thành `Xóa`, tự làm mờ/vô hiệu hóa khi chưa đặt avatar kèm tooltip hướng dẫn và thông báo phản hồi ngay khi tải hoặc xóa ảnh đại diện.
+- **Sửa lỗi mất toàn bộ giao diện custom khi mở Antigravity từ Thông báo hệ thống Windows (Toast Notification) lúc app đang đóng hoàn toàn:**
+  - Nguyên nhân: Windows COM Toast Activator (`HKCU\Software\Classes\CLSID\{...}\LocalServer32`) và trình mở liên kết (`HKCU\Software\Classes\antigravity\shell\open\command`) gọi trực tiếp `Antigravity.exe` mà không đi qua shortcut `.lnk`, nên thiếu cờ `--remote-debugging-port=0`.
+  - Khắc phục triệt để bằng Win32 Registry API thuần Rust (`src/sys.rs` + `src/installer.rs` + `src/daemon.rs`): tự động gắn `--remote-debugging-port=0` vào cả COM Toast `LocalServer32` và protocol `antigravity://` lúc cài đặt lẫn tự phục hồi ngầm mỗi khi daemon chạy / sau khi Antigravity cập nhật (và tự dọn sạch khi `uninstall`).
 
 ---
 

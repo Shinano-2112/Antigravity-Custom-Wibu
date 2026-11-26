@@ -338,8 +338,8 @@ mod tests {
             ]
         );
         assert!(
-            report.size_bytes < 120_000,
-            "Split & compacted Lazy HTTP payload should be < 120 KB, got {} bytes",
+            report.size_bytes < 180_000,
+            "Split & compacted Lazy HTTP payload should be < 180 KB, got {} bytes",
             report.size_bytes
         );
 

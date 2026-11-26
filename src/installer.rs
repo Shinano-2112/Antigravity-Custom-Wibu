@@ -1,7 +1,10 @@
 use crate::builder::{build_payload, BuildOptions};
 use crate::cdp::{cleanup_open_pages, fetch_targets, filter_antigravity_pages};
 use crate::paths::{read_port_info, resolve_daemon_exe, resolve_port_file, AppPaths};
-use crate::sys::{is_pid_alive, process_memory_stats, spawn_detached, terminate_pid};
+use crate::sys::{
+    cleanup_windows_cdp_launch_hooks, ensure_windows_cdp_launch_hooks, is_pid_alive,
+    process_memory_stats, spawn_detached, terminate_pid,
+};
 use crate::Result;
 use std::fs;
 #[cfg(unix)]
@@ -402,6 +405,10 @@ foreach ($Dir in $SearchDirs) {{
         return Err(format!("Windows shortcut/service setup failed: {stderr}").into());
     }
 
+    for hook in ensure_windows_cdp_launch_hooks() {
+        println!("[install] Patched CDP flag on Windows launch hook: {hook}");
+    }
+
     let mut running_pid = None;
     if !no_startup {
         for _ in 0..12 {
@@ -555,6 +562,9 @@ fn remove_autostart(paths: &AppPaths) {
         if paths.legacy_vbs.is_file() {
             let _ = fs::remove_file(&paths.legacy_vbs);
             println!("[uninstall] Removed legacy silent-start.vbs.");
+        }
+        for hook in cleanup_windows_cdp_launch_hooks() {
+            println!("[uninstall] Restored Windows launch hook: {hook}");
         }
     }
 

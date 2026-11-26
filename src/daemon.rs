@@ -3,7 +3,9 @@ use crate::cdp::{connect_ws, fetch_targets, filter_antigravity_pages, CdpTarget}
 use crate::config::{append_log, read_config, save_config_merge};
 use crate::media::{scan_user_media, Md5Cache, MediaServer};
 use crate::paths::{read_port_info, resolve_port_file, AppPaths};
-use crate::sys::{is_pid_alive, register_shutdown_flag, trim_working_set};
+use crate::sys::{
+    ensure_windows_cdp_launch_hooks, is_pid_alive, register_shutdown_flag, trim_working_set,
+};
 use crate::ws::{WsClient, WsEvent};
 use crate::Result;
 use serde_json::{json, Value};
@@ -551,8 +553,17 @@ pub fn run(opts: DaemonOptions) -> Result<()> {
         opts.echo_stdout,
     );
 
+    for hook in ensure_windows_cdp_launch_hooks() {
+        append_log(
+            &paths.log_file,
+            &format!("Patched CDP flag on Windows launch hook: {hook}"),
+            opts.echo_stdout,
+        );
+    }
+
     let mut last_port: Option<u16> = None;
     let mut consecutive_fetch_failures: u32 = 0;
+    let mut last_hook_check = Instant::now();
     let mut last_payload_stamp = file_stamp(&paths.payload_js);
     let mut last_themes_stamp = file_stamp(&paths.themes_json);
     let mut last_engine_stamp = file_stamp(&paths.engine_js);
@@ -687,9 +698,28 @@ pub fn run(opts: DaemonOptions) -> Result<()> {
                 close_all_sessions(&sessions);
                 last_port = None;
                 consecutive_fetch_failures = 0;
+                for hook in ensure_windows_cdp_launch_hooks() {
+                    append_log(
+                        &paths.log_file,
+                        &format!("Re-patched CDP flag on Windows launch hook: {hook}"),
+                        opts.echo_stdout,
+                    );
+                }
+                last_hook_check = Instant::now();
                 trim_working_set();
             } else {
                 consecutive_fetch_failures = 0;
+            }
+        }
+
+        if last_hook_check.elapsed() >= Duration::from_secs(60) {
+            last_hook_check = Instant::now();
+            for hook in ensure_windows_cdp_launch_hooks() {
+                append_log(
+                    &paths.log_file,
+                    &format!("Self-healed CDP flag on Windows launch hook: {hook}"),
+                    opts.echo_stdout,
+                );
             }
         }
 

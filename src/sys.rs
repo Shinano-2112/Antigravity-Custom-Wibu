@@ -224,6 +224,267 @@ pub fn spawn_detached(exe: &Path, args: &[&str], workdir: &Path) -> Result<u32> 
     }
 }
 
+const CDP_FLAG: &str = "--remote-debugging-port=0";
+
+fn split_leading_exe(raw: &str) -> Option<(&str, &str)> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(after_open) = trimmed.strip_prefix('"') {
+        let close = after_open.find('"')?;
+        let exe = &after_open[..close];
+        let rest = &after_open[close + 1..];
+        Some((exe, rest))
+    } else {
+        let lower = trimmed.to_ascii_lowercase();
+        let exe_pos = lower.find(".exe")?;
+        let end = exe_pos + 4;
+        if let Some(next) = trimmed[end..].chars().next() {
+            if !next.is_whitespace() {
+                return None;
+            }
+        }
+        Some((&trimmed[..end], &trimmed[end..]))
+    }
+}
+
+fn is_antigravity_desktop_exe(exe: &str) -> bool {
+    let file_name = exe
+        .rsplit(|c| c == '\\' || c == '/')
+        .next()
+        .unwrap_or(exe);
+    file_name.eq_ignore_ascii_case("Antigravity.exe")
+}
+
+/// Inserts `--remote-debugging-port=0` right after `"<path>\Antigravity.exe"` when missing.
+/// Never touches `Antigravity IDE.exe` or `Uninstall Antigravity.exe`.
+pub fn patch_antigravity_cmd_for_cdp(raw: &str) -> Option<String> {
+    let (exe, rest) = split_leading_exe(raw)?;
+    if !is_antigravity_desktop_exe(exe) {
+        return None;
+    }
+    if rest.to_ascii_lowercase().contains("--remote-debugging-port") {
+        return None;
+    }
+    let rest_trimmed = rest.trim();
+    if rest_trimmed.is_empty() {
+        Some(format!("\"{exe}\" {CDP_FLAG}"))
+    } else {
+        Some(format!("\"{exe}\" {CDP_FLAG} {rest_trimmed}"))
+    }
+}
+
+/// Removes `--remote-debugging-port=0` added to Antigravity Windows launch hooks (used on `uninstall`).
+pub fn unpatch_antigravity_cmd_cdp(raw: &str) -> Option<String> {
+    let (exe, rest) = split_leading_exe(raw)?;
+    if !is_antigravity_desktop_exe(exe) {
+        return None;
+    }
+    let lower = rest.to_ascii_lowercase();
+    let idx = lower.find("--remote-debugging-port=0")?;
+    let before = rest[..idx].trim();
+    let after = rest[idx + CDP_FLAG.len()..].trim();
+    let combined = match (before.is_empty(), after.is_empty()) {
+        (true, true) => String::new(),
+        (false, true) => before.to_string(),
+        (true, false) => after.to_string(),
+        (false, false) => format!("{before} {after}"),
+    };
+    if combined.is_empty() {
+        Some(format!("\"{exe}\""))
+    } else {
+        Some(format!("\"{exe}\" {combined}"))
+    }
+}
+
+#[cfg(windows)]
+fn to_wide_nul(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+fn read_hkcu_default_str(subkey: &str) -> Option<(u32, String)> {
+    use std::ptr;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_QUERY_VALUE,
+        REG_EXPAND_SZ, REG_SZ,
+    };
+
+    let subkey_w = to_wide_nul(subkey);
+    let mut hkey: HKEY = ptr::null_mut();
+    let rc = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey_w.as_ptr(), 0, KEY_QUERY_VALUE, &mut hkey) };
+    if rc != 0 {
+        return None;
+    }
+
+    let mut val_type: u32 = 0;
+    let mut byte_len: u32 = 0;
+    let q1 = unsafe {
+        RegQueryValueExW(
+            hkey,
+            ptr::null(),
+            ptr::null(),
+            &mut val_type,
+            ptr::null_mut(),
+            &mut byte_len,
+        )
+    };
+    if q1 != 0 || byte_len == 0 || (val_type != REG_SZ && val_type != REG_EXPAND_SZ) {
+        unsafe { RegCloseKey(hkey) };
+        return None;
+    }
+
+    let mut buf = vec![0u8; byte_len as usize];
+    let mut actual_len = byte_len;
+    let q2 = unsafe {
+        RegQueryValueExW(
+            hkey,
+            ptr::null(),
+            ptr::null(),
+            &mut val_type,
+            buf.as_mut_ptr(),
+            &mut actual_len,
+        )
+    };
+    unsafe { RegCloseKey(hkey) };
+    if q2 != 0 {
+        return None;
+    }
+
+    let u16s: Vec<u16> = buf[..(actual_len as usize).min(buf.len())]
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    let trimmed = match u16s.iter().position(|&c| c == 0) {
+        Some(pos) => &u16s[..pos],
+        None => &u16s[..],
+    };
+    Some((val_type, String::from_utf16_lossy(trimmed)))
+}
+
+#[cfg(windows)]
+fn write_hkcu_default_str(subkey: &str, val_type: u32, value: &str) -> bool {
+    use std::ptr;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE,
+    };
+
+    let subkey_w = to_wide_nul(subkey);
+    let mut hkey: HKEY = ptr::null_mut();
+    let rc = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey_w.as_ptr(), 0, KEY_SET_VALUE, &mut hkey) };
+    if rc != 0 {
+        return false;
+    }
+
+    let wide = to_wide_nul(value);
+    let bytes = unsafe { std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2) };
+    let wrc = unsafe { RegSetValueExW(hkey, ptr::null(), 0, val_type, bytes.as_ptr(), bytes.len() as u32) };
+    unsafe { RegCloseKey(hkey) };
+    wrc == 0
+}
+
+#[cfg(windows)]
+fn collect_hkcu_clsid_subkeys() -> Vec<String> {
+    use std::ptr;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_ENUMERATE_SUB_KEYS,
+    };
+
+    let root_w = to_wide_nul(r"Software\Classes\CLSID");
+    let mut hkey: HKEY = ptr::null_mut();
+    let rc = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            root_w.as_ptr(),
+            0,
+            KEY_ENUMERATE_SUB_KEYS,
+            &mut hkey,
+        )
+    };
+    if rc != 0 {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    let mut idx: u32 = 0;
+    let mut name_buf = [0u16; 256];
+    loop {
+        let mut name_len = name_buf.len() as u32;
+        let erc = unsafe {
+            RegEnumKeyExW(
+                hkey,
+                idx,
+                name_buf.as_mut_ptr(),
+                &mut name_len,
+                ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        };
+        if erc != 0 {
+            break;
+        }
+        out.push(String::from_utf16_lossy(&name_buf[..name_len as usize]));
+        idx += 1;
+    }
+    unsafe { RegCloseKey(hkey) };
+    out
+}
+
+#[cfg(windows)]
+fn update_hkcu_cdp_launch_hooks(patch: bool) -> Vec<String> {
+    let mut targets = vec![
+        r"Software\Classes\antigravity\shell\open\command".to_string(),
+        r"Software\Classes\Applications\Antigravity.exe\shell\open\command".to_string(),
+    ];
+    for clsid in collect_hkcu_clsid_subkeys() {
+        targets.push(format!(r"Software\Classes\CLSID\{clsid}\LocalServer32"));
+    }
+
+    let mut updated = Vec::new();
+    for subkey in targets {
+        let Some((val_type, current)) = read_hkcu_default_str(&subkey) else {
+            continue;
+        };
+        let next = if patch {
+            patch_antigravity_cmd_for_cdp(&current)
+        } else {
+            unpatch_antigravity_cmd_cdp(&current)
+        };
+        if let Some(new_val) = next {
+            if write_hkcu_default_str(&subkey, val_type, &new_val) {
+                updated.push(format!(r"HKCU\{subkey}"));
+            }
+        }
+    }
+    updated
+}
+
+/// Ensures Windows COM Toast Activator (`LocalServer32`) and `antigravity://` protocol
+/// handlers pass `--remote-debugging-port=0` when launching a closed Antigravity instance.
+#[cfg(windows)]
+pub fn ensure_windows_cdp_launch_hooks() -> Vec<String> {
+    update_hkcu_cdp_launch_hooks(true)
+}
+
+#[cfg(not(windows))]
+pub fn ensure_windows_cdp_launch_hooks() -> Vec<String> {
+    Vec::new()
+}
+
+/// Removes `--remote-debugging-port=0` from Windows COM Toast Activator and protocol hooks on uninstall.
+#[cfg(windows)]
+pub fn cleanup_windows_cdp_launch_hooks() -> Vec<String> {
+    update_hkcu_cdp_launch_hooks(false)
+}
+
+#[cfg(not(windows))]
+pub fn cleanup_windows_cdp_launch_hooks() -> Vec<String> {
+    Vec::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,5 +497,44 @@ mod tests {
         let mem = process_memory_stats(pid).expect("memory stats for current process");
         assert!(mem.working_set_kb > 0);
         trim_working_set();
+    }
+
+    #[test]
+    fn patch_and_unpatch_antigravity_commands() {
+        assert_eq!(
+            patch_antigravity_cmd_for_cdp(r"C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe"),
+            Some(r#""C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe" --remote-debugging-port=0"#.to_string())
+        );
+        assert_eq!(
+            patch_antigravity_cmd_for_cdp(r"C:\Users\John Doe\AppData\Local\Programs\antigravity\Antigravity.exe"),
+            Some(r#""C:\Users\John Doe\AppData\Local\Programs\antigravity\Antigravity.exe" --remote-debugging-port=0"#.to_string())
+        );
+        assert_eq!(
+            patch_antigravity_cmd_for_cdp(r#""C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe" "%1""#),
+            Some(r#""C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe" --remote-debugging-port=0 "%1""#.to_string())
+        );
+        // Idempotent when flag already present
+        assert_eq!(
+            patch_antigravity_cmd_for_cdp(r#""C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe" --remote-debugging-port=0 "%1""#),
+            None
+        );
+        // Must ignore Antigravity IDE and uninstaller
+        assert_eq!(
+            patch_antigravity_cmd_for_cdp(r#""C:\Users\Alice\AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe" "%1""#),
+            None
+        );
+        assert_eq!(
+            patch_antigravity_cmd_for_cdp(r"C:\Users\Alice\AppData\Local\Programs\antigravity\Uninstall Antigravity.exe"),
+            None
+        );
+        // Unpatch restores clean command lines
+        assert_eq!(
+            unpatch_antigravity_cmd_cdp(r#""C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe" --remote-debugging-port=0"#),
+            Some(r#""C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe""#.to_string())
+        );
+        assert_eq!(
+            unpatch_antigravity_cmd_cdp(r#""C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe" --remote-debugging-port=0 "%1""#),
+            Some(r#""C:\Users\Alice\AppData\Local\Programs\antigravity\Antigravity.exe" "%1""#.to_string())
+        );
     }
 }
