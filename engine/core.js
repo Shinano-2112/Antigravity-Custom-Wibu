@@ -1871,6 +1871,19 @@
       body[data-has-browser-hole="true"] .agy-shell[data-agy-hole-active="1"] > #agy-live-bg-layer {
         clip-path: var(--agy-hole-clip, none) !important;
       }
+      /* Hide Antigravity's faded 'A' watermark logo & misty radial glow on New Conversation screen */
+      .agy-shell .agy-home .home-greeting-mark,
+      .agy-shell svg.home-greeting-mark {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+      }
+      body[data-agy-home-glow] .agy-shell .agy-sheet,
+      .agy-shell .agy-home {
+        background: transparent !important;
+        background-image: none !important;
+        backdrop-filter: none !important;
+      }
       .agy-shell [data-agy-greeting] {
         font-size: 0 !important;
         line-height: 0 !important;

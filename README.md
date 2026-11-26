@@ -18,6 +18,7 @@ Trình tùy biến giao diện nền động, màn hình khởi động (Boot HU
 - **Sửa lỗi Boot Intro không tự chạy lúc vừa mở app:** Vá lỗi kiểm tra trùng cờ `__AGY_BOOT_PLAYED__` giữa `engine/core.js` và module nạp lười `engine/boot.js` giúp intro tự khởi chạy ngay khi mở Antigravity.
 - **Khắc phục lỗi nền video bị tối nháy khi hover / mở tooltip trên Windows:** Cố định thẻ `<video>` trên 1 đường render GPU nhất quán (`isolation: isolate` + `filter: brightness(1.001)`), tránh Windows DirectComposition (MPO) chuyển đổi qua lại làm lệch độ sáng nền khi tương tác UI.
 - **Sửa lỗi menu thanh tiêu đề bị trong suốt:** Khôi phục nền tối đặc (`var(--card)`) kèm viền và đổ bóng rõ nét cho các menu `Antigravity`, `Workspace`, `View`, `Window` và các popup `.surface-opaque` / `[data-browser-occluder="true"]`, vẫn giữ **0 `:has()`** và **0 live `backdrop-filter: blur()`**.
+- **Ẩn watermark & quầng mờ mặc định ở màn hình New Conversation:** Loại bỏ logo Antigravity mờ (`svg.home-greeting-mark`) và lớp quầng sáng (`data-agy-home-glow`) đè lên nhân vật/ảnh nền khi mở hội thoại mới.
 
 ---
 
