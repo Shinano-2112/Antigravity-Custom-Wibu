@@ -36,7 +36,8 @@ Trình tùy biến giao diện nền động, màn hình khởi động (Boot HU
 - **Tối ưu UX mục `Chat Avatars`:** Đổi nút `Off` thành `Xóa`, tự làm mờ/vô hiệu hóa khi chưa đặt avatar kèm tooltip hướng dẫn và thông báo phản hồi ngay khi tải hoặc xóa ảnh đại diện.
 - **Sửa lỗi mất toàn bộ giao diện custom khi mở Antigravity từ Thông báo hệ thống Windows (Toast Notification) lúc app đang đóng hoàn toàn:**
   - Nguyên nhân: Windows COM Toast Activator (`HKCU\Software\Classes\CLSID\{...}\LocalServer32`) và trình mở liên kết (`HKCU\Software\Classes\antigravity\shell\open\command`) gọi trực tiếp `Antigravity.exe` mà không đi qua shortcut `.lnk`, nên thiếu cờ `--remote-debugging-port=0`.
-  - Khắc phục triệt để bằng Win32 Registry API thuần Rust (`src/sys.rs` + `src/installer.rs` + `src/daemon.rs`): tự động gắn `--remote-debugging-port=0` vào cả COM Toast `LocalServer32` và protocol `antigravity://` lúc cài đặt lẫn tự phục hồi ngầm mỗi khi daemon chạy / sau khi Antigravity cập nhật (và tự dọn sạch khi `uninstall`).
+  - Khắc phục triệt để bằng Win32 Registry API thuần Rust (`src/sys.rs` + `src/installer.rs` + `src/daemon.rs`): tự động gắn `--remote-debugging-port=0` vào cả COM Toast `LocalServer32` và protocol `antigravity://` lúc cài đặt lẫn tự phục hồi ngầm (ngay khi daemon khởi động, 5 giây sau mỗi lần Antigravity mở mới và định kỳ 60 giây — tự dọn sạch khi `uninstall`).
+  - Bổ sung xác minh tên tiến trình (`QueryFullProcessImageNameW` trong `is_daemon_pid_alive`) chống đụng độ PID reuse từ file `daemon.pid` cũ, và khởi chạy daemon tách khỏi Job Object cha qua `explorer.exe` khi không có Scheduled Task.
 
 ---
 

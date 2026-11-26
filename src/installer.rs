@@ -2,8 +2,8 @@ use crate::builder::{build_payload, BuildOptions};
 use crate::cdp::{cleanup_open_pages, fetch_targets, filter_antigravity_pages};
 use crate::paths::{read_port_info, resolve_daemon_exe, resolve_port_file, AppPaths};
 use crate::sys::{
-    cleanup_windows_cdp_launch_hooks, ensure_windows_cdp_launch_hooks, is_pid_alive,
-    process_memory_stats, spawn_detached, terminate_pid,
+    cleanup_windows_cdp_launch_hooks, ensure_windows_cdp_launch_hooks, is_daemon_pid_alive,
+    is_pid_alive, process_memory_stats, spawn_detached, terminate_pid,
 };
 use crate::Result;
 use std::fs;
@@ -22,7 +22,7 @@ const WIN_TASK_NAME: &str = "AntigravityCustomTheme";
 pub fn read_running_pid(paths: &AppPaths) -> Option<u32> {
     let raw = fs::read_to_string(&paths.pid_file).ok()?;
     let pid: u32 = raw.trim().parse().ok()?;
-    if pid > 0 && is_pid_alive(pid) {
+    if pid > 0 && is_daemon_pid_alive(pid) {
         Some(pid)
     } else {
         None
@@ -35,7 +35,7 @@ pub fn stop_daemon(paths: &AppPaths) -> Result<Option<u32>> {
     }
     let raw = fs::read_to_string(&paths.pid_file).unwrap_or_default();
     let pid: u32 = raw.trim().parse().unwrap_or(0);
-    let stopped = if pid > 0 && is_pid_alive(pid) {
+    let stopped = if pid > 0 && is_daemon_pid_alive(pid) {
         terminate_pid(pid);
         for _ in 0..10 {
             thread::sleep(Duration::from_millis(80));
@@ -105,7 +105,65 @@ fn try_start_via_windows_task(paths: &AppPaths, daemon_exe: &std::path::Path) ->
         return None;
     }
 
-    for _ in 0..20 {
+    for _ in 0..40 {
+        thread::sleep(Duration::from_millis(150));
+        if let Some(pid) = read_running_pid(paths) {
+            return Some(pid);
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn try_start_via_explorer_shortcut(paths: &AppPaths, daemon_exe: &std::path::Path) -> Option<u32> {
+    use std::os::windows::process::CommandExt;
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    if std::env::var_os("AGY_NO_EXPLORER_LAUNCH").is_some() {
+        return None;
+    }
+
+    let appdata = std::env::var_os("APPDATA")?;
+    let lnk = PathBuf::from(appdata)
+        .join(r"Microsoft\Windows\Start Menu\Programs\Startup\AntigravityCustomTheme.lnk");
+    if !lnk.is_file() {
+        return None;
+    }
+
+    // Verify shortcut bytes reference our daemon exe and root so isolated test roots don't hijack Startup LNK.
+    let bytes = fs::read(&lnk).ok()?;
+    let lower_ascii: String = bytes
+        .iter()
+        .filter(|&&b| (0x20..=0x7E).contains(&b))
+        .map(|&b| (b as char).to_ascii_lowercase())
+        .collect();
+    let exe_name = daemon_exe
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("agy-theme-daemon.exe")
+        .to_ascii_lowercase();
+    let root_name = paths
+        .root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !lower_ascii.contains(&exe_name) || (!root_name.is_empty() && !lower_ascii.contains(&root_name)) {
+        return None;
+    }
+
+    let _ = Command::new("explorer.exe")
+        .arg(&lnk)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .ok()?;
+
+    for _ in 0..40 {
         thread::sleep(Duration::from_millis(150));
         if let Some(pid) = read_running_pid(paths) {
             return Some(pid);
@@ -138,6 +196,9 @@ pub fn start_daemon(paths: &AppPaths, watch_themes: bool) -> Result<u32> {
     #[cfg(windows)]
     if !watch_themes {
         if let Some(pid) = try_start_via_windows_task(paths, &daemon_exe) {
+            return Ok(pid);
+        }
+        if let Some(pid) = try_start_via_explorer_shortcut(paths, &daemon_exe) {
             return Ok(pid);
         }
     }

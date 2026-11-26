@@ -4,7 +4,7 @@ use crate::config::{append_log, read_config, save_config_merge};
 use crate::media::{scan_user_media, Md5Cache, MediaServer};
 use crate::paths::{read_port_info, resolve_port_file, AppPaths};
 use crate::sys::{
-    ensure_windows_cdp_launch_hooks, is_pid_alive, register_shutdown_flag, trim_working_set,
+    ensure_windows_cdp_launch_hooks, is_daemon_pid_alive, register_shutdown_flag, trim_working_set,
 };
 use crate::ws::{WsClient, WsEvent};
 use crate::Result;
@@ -56,7 +56,7 @@ fn acquire_pid_lock(paths: &AppPaths, echo_stdout: bool) -> Result<Option<PidGua
     let my_pid = std::process::id();
     if let Ok(raw) = fs::read_to_string(&paths.pid_file) {
         if let Ok(existing_pid) = raw.trim().parse::<u32>() {
-            if existing_pid != 0 && existing_pid != my_pid && is_pid_alive(existing_pid) {
+            if existing_pid != 0 && existing_pid != my_pid && is_daemon_pid_alive(existing_pid) {
                 append_log(
                     &paths.log_file,
                     &format!(
@@ -650,6 +650,9 @@ pub fn run(opts: DaemonOptions) -> Result<()> {
                         close_all_sessions(&sessions);
                     }
                     consecutive_fetch_failures = 0;
+                    // Antigravity may re-register `antigravity://` protocol right after launch;
+                    // schedule a quick self-heal pass ~5s after discovering a new port.
+                    last_hook_check = Instant::now() - Duration::from_secs(55);
                 }
                 last_port = Some(info.port);
 

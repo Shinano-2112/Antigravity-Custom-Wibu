@@ -65,6 +65,56 @@ pub fn is_pid_alive(pid: u32) -> bool {
     }
 }
 
+pub fn is_daemon_image_name(path_or_name: &str) -> bool {
+    let base = path_or_name
+        .trim()
+        .rsplit(|c| c == '\\' || c == '/')
+        .next()
+        .unwrap_or(path_or_name)
+        .trim();
+    base.eq_ignore_ascii_case("agy-theme-daemon.exe")
+        || base.eq_ignore_ascii_case("agy-theme.exe")
+        || base.eq_ignore_ascii_case("agy-theme-daemon")
+        || base.eq_ignore_ascii_case("agy-theme")
+}
+
+/// Checks that `pid` is alive AND actually corresponds to our theme daemon binary,
+/// preventing stale `daemon.pid` files from colliding with unrelated Windows PID reuse.
+#[cfg(windows)]
+pub fn is_daemon_pid_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    const STILL_ACTIVE: u32 = 259;
+
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut exit_code: u32 = 0;
+        let ok = GetExitCodeProcess(handle, &mut exit_code);
+        if ok == 0 || exit_code != STILL_ACTIVE {
+            CloseHandle(handle);
+            return false;
+        }
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let qok = QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len);
+        CloseHandle(handle);
+        if qok == 0 || len == 0 {
+            return false;
+        }
+        let img = String::from_utf16_lossy(&buf[..len as usize]);
+        is_daemon_image_name(&img)
+    }
+}
+
 #[cfg(unix)]
 pub fn is_pid_alive(pid: u32) -> bool {
     if pid == 0 {
@@ -74,6 +124,41 @@ pub fn is_pid_alive(pid: u32) -> bool {
         fn kill(pid: i32, sig: i32) -> i32;
     }
     unsafe { kill(pid as i32, 0) == 0 }
+}
+
+#[cfg(target_os = "linux")]
+pub fn is_daemon_pid_alive(pid: u32) -> bool {
+    if !is_pid_alive(pid) {
+        return false;
+    }
+    if let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) {
+        if let Some(s) = exe.to_str() {
+            return is_daemon_image_name(s.trim_end_matches(" (deleted)"));
+        }
+    }
+    if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) {
+        return is_daemon_image_name(&comm);
+    }
+    true
+}
+
+#[cfg(target_os = "macos")]
+pub fn is_daemon_pid_alive(pid: u32) -> bool {
+    if !is_pid_alive(pid) {
+        return false;
+    }
+    if let Ok(out) = Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "comm="])
+        .output()
+    {
+        if out.status.success() {
+            let comm = String::from_utf8_lossy(&out.stdout);
+            if !comm.trim().is_empty() {
+                return is_daemon_image_name(&comm);
+            }
+        }
+    }
+    true
 }
 
 #[cfg(windows)]
@@ -494,6 +579,9 @@ mod tests {
         let pid = std::process::id();
         assert!(is_pid_alive(pid));
         assert!(!is_pid_alive(0));
+        assert!(is_daemon_image_name(r"C:\test\agy-theme-daemon.exe"));
+        assert!(is_daemon_image_name(r"/usr/local/bin/agy-theme"));
+        assert!(!is_daemon_image_name(r"C:\test\Antigravity.exe"));
         let mem = process_memory_stats(pid).expect("memory stats for current process");
         assert!(mem.working_set_kb > 0);
         trim_working_set();
