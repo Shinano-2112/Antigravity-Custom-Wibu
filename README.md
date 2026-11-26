@@ -26,6 +26,7 @@ Trình tùy biến giao diện nền động, màn hình khởi động (Boot HU
   - Tăng tốc chu kỳ dò cửa sổ mới trong daemon Rust (`300ms` khi chưa attach), tự cấp lại `Page.setBypassCSP` + `Runtime.addBinding` sau navigation và làm mới `addScriptToEvaluateOnNewDocument` mỗi lần lưu cấu hình.
   - Bảo vệ ghi `theme_config.json` bằng `Mutex` chống đọc nửa vời trên Windows, xả ngay thanh trượt (`Dim`/`Blur`/`Avatar`/`Âm lượng`) khi thả chuột + sự kiện `pagehide`/`beforeunload`, và bổ sung endpoint dự phòng `POST /save_config` (`sendBeacon`/`keepalive`) để không bao giờ thất lạc thay đổi khi tắt app đột ngột.
 - **Sửa lỗi khung chat bị chia đôi sáng/tối theo chiều dọc sau khi đóng bảng phụ bên phải:** Theo dõi thêm `[data-main-content-body]`, container bọc `[data-side-panel-body]`, tọa độ thực tế và `transitionend` để tự động xóa vùng `clip-path` cũ trên `.agy-shell::before` ngay khi bảng phụ trượt ra ngoài màn hình.
+- **Cyber / Mecha Telemetry cho trạng thái `Working`:** Biến dòng chữ `Working` đơn điệu (`[data-testid="agent-loading"]`) thành thanh telemetry Sci-Fi phông `monospace` đồng bộ Boot HUD (`▸ [NEURAL LINK] PROCESSING FOR SENSEI | ▰▰▰▱▱  04.2s ▌`), tự ăn màu chủ đạo theo preset đang dùng, có tia quét nền, thanh năng lượng chạy đuổi, bộ đếm giây thời gian thực, tự ngắt timer (`0% CPU`) ngay khi AI chạy xong và có công tắc bật/tắt `Mecha Telemetry` ngay trong Custom Theme Studio.
 
 ---
 

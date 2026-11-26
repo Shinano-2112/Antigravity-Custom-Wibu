@@ -78,6 +78,7 @@
   const STORAGE_BOOT_PASS_HASH = 'agy_boot_pass_hash_v3';
   const STORAGE_SKETCH_REVEAL = 'agy_sketch_reveal_v3';
   const STORAGE_TAWA_GREETING = 'agy_tawa_greeting_v3';
+  const STORAGE_MECHA_WORKING = 'agy_mecha_working_v3';
   const GREETING_RX = /^(?:Hey\s+[^,]{1,40},\s+what\s+should\s+we\s+build\s+today\??|Good\s+to\s+see\s+you,\s+[^.]{1,40}\.\s+What'?s\s+next\??|What\s+(?:should|are)\s+we\s+build(?:ing)?\s+today\??|Welcome\s+back[,.!\s]+[^.!?]{0,40}(?:[.!?]\s*(?:Where\s+should\s+we\s+pick\s+up|What'?s\s+next|What\s+should\s+we\s+build)[^.!?]{0,40}[.!?]?)?|Where\s+should\s+we\s+pick\s+up\??|Ready\s+(?:to\s+build|when\s+you\s+are)[,.!\s]*.*)$/i;
 
   const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
@@ -460,12 +461,16 @@
     const tawaGreeting = storedTawaGreeting !== null
       ? storedTawaGreeting !== 'false'
       : (init.tawaGreeting !== undefined ? init.tawaGreeting : true);
+    const storedMechaWorking = safeGetStorage(STORAGE_MECHA_WORKING);
+    const mechaWorking = storedMechaWorking !== null
+      ? storedMechaWorking !== 'false'
+      : (init.mechaWorking !== undefined ? init.mechaWorking : true);
     const cached = {
       themeName, bubbleName, inputStyle, dimming, wpEnabled, wpMode,
       customWp, customVideo, savedImages, savedVideos,
       taskVoices, taskVoiceEnabled, taskVoiceVol, customGreetings,
       userAvatar, agentAvatar, glassBlur, avatarSize, avatarRadius,
-      bootIntro, bootOperator, bootPassHash, sketchReveal, tawaGreeting
+      bootIntro, bootOperator, bootPassHash, sketchReveal, tawaGreeting, mechaWorking
     };
     window.__AGY_STATE_CACHE__ = cached;
     return cached;
@@ -1236,6 +1241,9 @@
       }
       if (overrides.tawaGreeting !== undefined) {
         localStorage.setItem(STORAGE_TAWA_GREETING, String(st.tawaGreeting));
+      }
+      if (overrides.mechaWorking !== undefined) {
+        localStorage.setItem(STORAGE_MECHA_WORKING, String(st.mechaWorking));
       }
       if (overrides.userAvatar !== undefined) {
         localStorage.setItem(STORAGE_USER_AVATAR, overrides.userAvatar);
@@ -2031,11 +2039,73 @@
         margin: 0 auto;
         white-space: normal !important;
       }
+      @keyframes agyMechaScan {
+        0% { background-position: 180% 0; }
+        100% { background-position: -80% 0; }
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="1"] {
+        position: relative !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 14px !important;
+        max-width: 100% !important;
+        min-height: 30px !important;
+        padding: 6px 13px 6px 11px !important;
+        margin: 4px 0 !important;
+        border-radius: 5px !important;
+        background: ${isLight ? 'rgba(255, 255, 255, 0.88)' : 'rgba(7, 9, 18, 0.80)'} !important;
+        background-image: linear-gradient(108deg, transparent 0%, transparent 38%, ${isLight ? 'rgba(15, 23, 42, 0.06)' : (mainTheme.glow || 'rgba(192, 132, 252, 0.22)')} 50%, transparent 62%, transparent 100%) !important;
+        background-size: 240% 100% !important;
+        animation: agyMechaScan 2.6s linear infinite !important;
+        border: 1px solid ${mainTheme.borderColor || (isLight ? 'rgba(15, 23, 42, 0.16)' : 'rgba(192, 132, 252, 0.34)')} !important;
+        border-left: 3px solid ${mainTheme.primary} !important;
+        box-shadow: ${isLight ? '0 3px 12px rgba(15, 23, 42, 0.10)' : `0 4px 16px rgba(0, 0, 0, 0.45), 0 0 12px ${mainTheme.glow || 'rgba(192, 132, 252, 0.22)'}`} !important;
+        font-family: ui-monospace, 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace !important;
+        font-size: 11.5px !important;
+        line-height: 1.35 !important;
+        letter-spacing: 0.07em !important;
+        overflow: hidden !important;
+        user-select: none !important;
+        backdrop-filter: none !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="1"] > * {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="1"]::before {
+        content: attr(data-agy-telem-msg);
+        color: ${isLight ? '#0f172a' : '#f1f5f9'} !important;
+        font-weight: 600 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        text-shadow: ${isLight ? 'none' : '0 1px 6px rgba(0, 0, 0, 0.85)'} !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="1"]::after {
+        content: attr(data-agy-telem-hud);
+        color: ${mainTheme.primary} !important;
+        font-weight: 700 !important;
+        font-variant-numeric: tabular-nums !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        padding-left: 10px !important;
+        border-left: 1px solid ${isLight ? 'rgba(15, 23, 42, 0.14)' : 'rgba(255, 255, 255, 0.12)'} !important;
+        text-shadow: ${isLight ? 'none' : `0 0 8px ${mainTheme.glow || 'rgba(192, 132, 252, 0.5)'}`} !important;
+      }
     `;
 
     syncTitleBarOverlay(st);
     scheduleTitleBarSync(st);
     syncEmptyGreeting(st);
+    syncWorkingTelemetry(st);
   }
 
   function syncTitleBarOverlay(stOverride) {
@@ -2123,6 +2193,15 @@
     document.querySelectorAll('[data-agy-tbl-wrapped]').forEach((el) => delete el.dataset.agyTblWrapped);
     document.querySelectorAll('[data-agy-has-hole]').forEach((el) => delete el.dataset.agyHasHole);
     document.querySelectorAll('[data-agy-empty-card]').forEach((el) => delete el.dataset.agyEmptyCard);
+    clearMechaTelemetryTimer();
+    document.querySelectorAll('[data-agy-telemetry]').forEach((el) => {
+      delete el.dataset.agyTelemetry;
+      delete el.dataset.agyTelemMsg;
+      delete el.dataset.agyTelemHud;
+      delete el.dataset.agyTelemStart;
+      delete el.dataset.agyTelemRaw;
+      delete el.dataset.agyTelemLine;
+    });
     const liveBgLayer = document.getElementById('agy-live-bg-layer');
     if (liveBgLayer) liveBgLayer.remove();
     const styleEl = document.getElementById('antigravity-custom-theme-active');
@@ -2609,6 +2688,128 @@
     }
   }
 
+  const MECHA_WORKING_LINES = [
+    '▸ [NEURAL LINK] PROCESSING FOR SENSEI',
+    '▸ [CORE SYNC] SYNTHESIZING FOR SENSEI',
+    '▸ [SCHALE OS] ANALYZING REQUEST · SENSEI',
+    '▸ [TELEMETRY] COMPUTING OUTPUT · SENSEI'
+  ];
+  const MECHA_BAR_FRAMES = [
+    '▰▱▱▱▱',
+    '▰▰▱▱▱',
+    '▰▰▰▱▱',
+    '▱▰▰▰▱',
+    '▱▱▰▰▰',
+    '▱▱▱▰▰',
+    '▱▱▱▱▰',
+    '▰▱▱▱▰'
+  ];
+
+  function clearMechaTelemetryTimer() {
+    if (window.__AGY_TELEM_TIMER__) {
+      clearInterval(window.__AGY_TELEM_TIMER__);
+      window.__AGY_TELEM_TIMER__ = 0;
+    }
+  }
+
+  function formatMechaElapsed(ms) {
+    const sec = Math.max(0, ms) / 1000;
+    if (sec < 60) {
+      return `${sec < 10 ? '0' : ''}${sec.toFixed(1)}s`;
+    }
+    const mins = Math.floor(sec / 60);
+    const rem = Math.floor(sec % 60);
+    return `${mins}m${rem < 10 ? '0' : ''}${rem}s`;
+  }
+
+  function pickMechaWorkingLine() {
+    const prev = window.__AGY_LAST_MECHA_LINE__ || '';
+    const choices = MECHA_WORKING_LINES.length > 1
+      ? MECHA_WORKING_LINES.filter((line) => line !== prev)
+      : MECHA_WORKING_LINES;
+    const picked = choices[Math.floor(Math.random() * choices.length)] || MECHA_WORKING_LINES[0];
+    window.__AGY_LAST_MECHA_LINE__ = picked;
+    return picked;
+  }
+
+  function resolveMechaTelemetryMsg(el, rawText) {
+    const clean = String(rawText || '').trim();
+    if (!clean || /^working$/i.test(clean)) {
+      if (!el.dataset.agyTelemLine) {
+        el.dataset.agyTelemLine = pickMechaWorkingLine();
+      }
+      return el.dataset.agyTelemLine;
+    }
+    if (/^thinking$/i.test(clean)) {
+      return '▸ [NEURAL CORE] REASONING FOR SENSEI';
+    }
+    if (/^compacting/i.test(clean)) {
+      return '▸ [MEM COMPACT] OPTIMIZING CONTEXT';
+    }
+    const clipped = clean.length > 44 ? `${clean.slice(0, 41)}...` : clean;
+    return `▸ [ACTIVE OP] ${clipped.toUpperCase()}`;
+  }
+
+  function updateMechaTelemetryHud(nodes) {
+    const now = Date.now();
+    const frameIdx = Math.floor(now / 125) % MECHA_BAR_FRAMES.length;
+    const bar = MECHA_BAR_FRAMES[frameIdx];
+    const cursor = (Math.floor(now / 450) % 2 === 0) ? '▌' : '\u00A0';
+    for (let i = 0; i < nodes.length; i++) {
+      const el = nodes[i];
+      const raw = (el.textContent || '').trim();
+      if (el.dataset.agyTelemRaw !== raw || !el.dataset.agyTelemMsg) {
+        el.dataset.agyTelemRaw = raw;
+        el.dataset.agyTelemMsg = resolveMechaTelemetryMsg(el, raw);
+      }
+      let startMs = Number(el.dataset.agyTelemStart);
+      if (!Number.isFinite(startMs) || startMs <= 0) {
+        startMs = now;
+        el.dataset.agyTelemStart = String(startMs);
+      }
+      const hud = `${bar}  ${formatMechaElapsed(now - startMs)} ${cursor}`;
+      if (el.dataset.agyTelemHud !== hud) {
+        el.dataset.agyTelemHud = hud;
+      }
+      if (el.dataset.agyTelemetry !== '1') {
+        el.dataset.agyTelemetry = '1';
+      }
+    }
+  }
+
+  function syncWorkingTelemetry(stOverride) {
+    const st = stOverride || getState();
+    const nodes = document.querySelectorAll('.agy-shell [data-testid="agent-loading"]');
+    if (!st.mechaWorking) {
+      clearMechaTelemetryTimer();
+      document.querySelectorAll('[data-agy-telemetry]').forEach((el) => {
+        delete el.dataset.agyTelemetry;
+        delete el.dataset.agyTelemMsg;
+        delete el.dataset.agyTelemHud;
+        delete el.dataset.agyTelemStart;
+        delete el.dataset.agyTelemRaw;
+        delete el.dataset.agyTelemLine;
+      });
+      return;
+    }
+    if (!nodes.length) {
+      clearMechaTelemetryTimer();
+      return;
+    }
+    updateMechaTelemetryHud(nodes);
+    if (!window.__AGY_TELEM_TIMER__) {
+      window.__AGY_TELEM_TIMER__ = setInterval(() => {
+        if (document.hidden) return;
+        const curNodes = document.querySelectorAll('.agy-shell [data-testid="agent-loading"]');
+        if (!curNodes.length || !getState().mechaWorking) {
+          clearMechaTelemetryTimer();
+          return;
+        }
+        updateMechaTelemetryHud(curNodes);
+      }, 125);
+    }
+  }
+
   function tick(forceMetrics = false) {
     const activeShell = findActiveShell();
     if (activeShell) {
@@ -2622,6 +2823,7 @@
     hookSidebarScroll();
     hookShellMetrics(forceMetrics);
     syncEmptyAgentResponses(false);
+    syncWorkingTelemetry();
     syncMarkdownTableWrappers();
     syncEmptyGreeting();
     syncTaskCompletionVoice();
@@ -2630,6 +2832,7 @@
   function scheduleTick(mutations) {
     if (Array.isArray(mutations)) {
       syncEmptyAgentResponses(true);
+      syncWorkingTelemetry();
     }
     const attrChanged = Array.isArray(mutations) && mutations.some((m) => m.type === 'attributes');
     if (attrChanged) {
@@ -2670,7 +2873,7 @@
     STORAGE_USER_AVATAR, STORAGE_AGENT_AVATAR, STORAGE_GLASS_BLUR,
     STORAGE_AVATAR_SIZE, STORAGE_AVATAR_RADIUS, STORAGE_BOOT_INTRO,
     STORAGE_BOOT_OPERATOR, STORAGE_BOOT_PASS_HASH,
-    STORAGE_SKETCH_REVEAL, STORAGE_TAWA_GREETING,
+    STORAGE_SKETCH_REVEAL, STORAGE_TAWA_GREETING, STORAGE_MECHA_WORKING,
     CHECK_SVG, INPUT_STYLES,
     escapeHtml, hashBootPasscode, resolveBootOperator,
     canonicalMediaKey, isSameMediaUrl, deriveMediaName,
@@ -2762,6 +2965,7 @@
   clearTitleBarTimers();
   clearStartupWatchdog();
   clearBootRetryTimer();
+  clearMechaTelemetryTimer();
   if (!window.__AGY_LOADED_MODS__ || !window.__AGY_LOADED_MODS__.boot || typeof window.__AGY_LOADED_MODS__.boot.then !== 'function') {
     window.__AGY_BOOT_LOADING__ = false;
   }

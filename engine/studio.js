@@ -24,6 +24,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     STORAGE_BOOT_PASS_HASH,
     STORAGE_SKETCH_REVEAL,
     STORAGE_TAWA_GREETING,
+    STORAGE_MECHA_WORKING,
     CHECK_SVG,
     INPUT_STYLES,
     escapeHtml,
@@ -193,6 +194,10 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
               <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #d4d4d8; cursor: pointer;">
                 <input id="agy-task-voice-toggle" type="checkbox" ${st.taskVoiceEnabled ? 'checked' : ''} style="accent-color: ${mainTheme.primary}; cursor: pointer;" />
                 Voice xong Task
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #d4d4d8; cursor: pointer;">
+                <input id="agy-mecha-working-toggle" type="checkbox" ${st.mechaWorking ? 'checked' : ''} style="accent-color: ${mainTheme.primary}; cursor: pointer;" />
+                Mecha Telemetry
               </label>
               <span id="agy-upload-status" style="font-size: 11.5px; color: #93c5fd;"></span>
             </div>
@@ -507,6 +512,12 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     if (greetingToggle) {
       greetingToggle.addEventListener('change', (e) => {
         applyTheme({ tawaGreeting: e.target.checked });
+      });
+    }
+    const mechaWorkingToggle = container.querySelector('#agy-mecha-working-toggle');
+    if (mechaWorkingToggle) {
+      mechaWorkingToggle.addEventListener('change', (e) => {
+        applyTheme({ mechaWorking: e.target.checked });
       });
     }
     function closeHostModalsForPreview() {
@@ -839,7 +850,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
             throw new Error('Config must be a JSON object');
           }
           const allowed = {};
-          const keys = ['themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting'];
+          const keys = ['themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting', 'mechaWorking'];
           keys.forEach((k) => {
             if (parsed[k] !== undefined) allowed[k] = parsed[k];
           });
@@ -869,6 +880,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       localStorage.removeItem(STORAGE_BOOT_INTRO);
       localStorage.removeItem(STORAGE_SKETCH_REVEAL);
       localStorage.removeItem(STORAGE_TAWA_GREETING);
+      localStorage.removeItem(STORAGE_MECHA_WORKING);
       localStorage.removeItem(STORAGE_TASK_VOICE_ENABLED);
       localStorage.removeItem(STORAGE_TASK_VOICE_VOL);
       localStorage.removeItem(STORAGE_CUSTOM_GREETINGS);
@@ -893,12 +905,14 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         avatarRadius: 50,
         bootIntro: true,
         sketchReveal: true,
-        tawaGreeting: true
+        tawaGreeting: true,
+        mechaWorking: true
       });
       syncModeButtons(defMode);
       if (bootToggle) bootToggle.checked = true;
       if (sketchToggle) sketchToggle.checked = true;
       if (greetingToggle) greetingToggle.checked = true;
+      if (mechaWorkingToggle) mechaWorkingToggle.checked = true;
       if (taskVoiceToggle) taskVoiceToggle.checked = true;
       if (taskVoiceVolSlider) taskVoiceVolSlider.value = 85;
       if (taskVoiceVolVal) taskVoiceVolVal.textContent = '85%';
