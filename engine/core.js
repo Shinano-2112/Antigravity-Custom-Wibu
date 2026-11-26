@@ -79,6 +79,9 @@
   const STORAGE_SKETCH_REVEAL = 'agy_sketch_reveal_v3';
   const STORAGE_TAWA_GREETING = 'agy_tawa_greeting_v3';
   const STORAGE_MECHA_WORKING = 'agy_mecha_working_v3';
+  const STORAGE_WORKING_STYLE = 'agy_working_style_v3';
+  const STORAGE_WORKING_TEXTS = 'agy_working_texts_v3';
+  const STORAGE_WORKING_ICON = 'agy_working_icon_v3';
   const GREETING_RX = /^(?:Hey\s+[^,]{1,40},\s+what\s+should\s+we\s+build\s+today\??|Good\s+to\s+see\s+you,\s+[^.]{1,40}\.\s+What'?s\s+next\??|What\s+(?:should|are)\s+we\s+build(?:ing)?\s+today\??|Welcome\s+back[,.!\s]+[^.!?]{0,40}(?:[.!?]\s*(?:Where\s+should\s+we\s+pick\s+up|What'?s\s+next|What\s+should\s+we\s+build)[^.!?]{0,40}[.!?]?)?|Where\s+should\s+we\s+pick\s+up\??|Ready\s+(?:to\s+build|when\s+you\s+are)[,.!\s]*.*)$/i;
 
   const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
@@ -99,6 +102,34 @@
     'minimal': {
       label: 'Minimal Clean',
       desc: 'Sleek subtle border without top decorative stickers'
+    }
+  };
+
+  const WORKING_STYLES = {
+    mecha: {
+      label: 'Mecha Telemetry',
+      badge: '⚡ Mecha',
+      desc: 'Sci-Fi monospace + thanh năng lượng + đồng hồ thực'
+    },
+    hud_pill: {
+      label: 'Schale HUD Pill',
+      badge: '💠 HUD Pill',
+      desc: 'Viên thuốc HUD đồng bộ Boot + sóng equalizer'
+    },
+    starlight: {
+      label: 'Starlight Shimmer',
+      badge: '✦ Starlight',
+      desc: 'Trong suốt không khung + chữ ánh sao lướt'
+    },
+    chibi_mali: {
+      label: 'Chibi + Mali',
+      badge: '🌸 Chibi',
+      desc: 'Font viết tay Mali + icon/GIF mini nhún nhảy'
+    },
+    default: {
+      label: 'Mặc định',
+      badge: '○ Mặc định',
+      desc: 'Hiển thị chữ Working nguyên bản của Antigravity'
     }
   };
 
@@ -391,6 +422,17 @@
     return normalizeGreetingLines(init.customGreetings);
   }
 
+  function readWorkingTexts(initOverride) {
+    try {
+      const raw = localStorage.getItem(STORAGE_WORKING_TEXTS);
+      if (raw !== null) {
+        return normalizeGreetingLines(JSON.parse(raw));
+      }
+    } catch (e) {}
+    const init = initOverride || window.__AGY_INITIAL_CONFIG__ || {};
+    return normalizeGreetingLines(init.workingTexts);
+  }
+
   function safeGetStorage(key) {
     try {
       return localStorage.getItem(key);
@@ -462,15 +504,22 @@
       ? storedTawaGreeting !== 'false'
       : (init.tawaGreeting !== undefined ? init.tawaGreeting : true);
     const storedMechaWorking = safeGetStorage(STORAGE_MECHA_WORKING);
-    const mechaWorking = storedMechaWorking !== null
+    const legacyMecha = storedMechaWorking !== null
       ? storedMechaWorking !== 'false'
       : (init.mechaWorking !== undefined ? init.mechaWorking : true);
+    const rawWorkStyle = safeGetStorage(STORAGE_WORKING_STYLE) || init.workingStyle || (legacyMecha ? 'mecha' : 'default');
+    const workingStyle = WORKING_STYLES[rawWorkStyle] ? rawWorkStyle : (legacyMecha ? 'mecha' : 'default');
+    const mechaWorking = workingStyle !== 'default';
+    const workingTexts = readWorkingTexts(init);
+    const rawWorkIcon = safeGetStorage(STORAGE_WORKING_ICON);
+    const workingIcon = rawWorkIcon !== null ? rawWorkIcon : (init.workingIcon || '');
     const cached = {
       themeName, bubbleName, inputStyle, dimming, wpEnabled, wpMode,
       customWp, customVideo, savedImages, savedVideos,
       taskVoices, taskVoiceEnabled, taskVoiceVol, customGreetings,
       userAvatar, agentAvatar, glassBlur, avatarSize, avatarRadius,
-      bootIntro, bootOperator, bootPassHash, sketchReveal, tawaGreeting, mechaWorking
+      bootIntro, bootOperator, bootPassHash, sketchReveal, tawaGreeting,
+      mechaWorking, workingStyle, workingTexts, workingIcon
     };
     window.__AGY_STATE_CACHE__ = cached;
     return cached;
@@ -1195,7 +1244,14 @@
 
   function applyTheme(overrides = {}, opts = {}) {
     const st = { ...getState(), ...overrides };
-    if (st.tawaGreeting) ensureGreetingFonts();
+    if (overrides.workingStyle !== undefined) {
+      st.workingStyle = WORKING_STYLES[overrides.workingStyle] ? overrides.workingStyle : 'mecha';
+      st.mechaWorking = st.workingStyle !== 'default';
+    } else if (overrides.mechaWorking !== undefined) {
+      st.mechaWorking = Boolean(overrides.mechaWorking);
+      st.workingStyle = st.mechaWorking ? (st.workingStyle && st.workingStyle !== 'default' ? st.workingStyle : 'mecha') : 'default';
+    }
+    if (st.tawaGreeting || st.workingStyle === 'chibi_mali') ensureGreetingFonts();
     try {
       localStorage.setItem(STORAGE_THEME, st.themeName);
       localStorage.setItem(STORAGE_BUBBLE, st.bubbleName);
@@ -1242,8 +1298,15 @@
       if (overrides.tawaGreeting !== undefined) {
         localStorage.setItem(STORAGE_TAWA_GREETING, String(st.tawaGreeting));
       }
-      if (overrides.mechaWorking !== undefined) {
+      if (overrides.mechaWorking !== undefined || overrides.workingStyle !== undefined) {
         localStorage.setItem(STORAGE_MECHA_WORKING, String(st.mechaWorking));
+        localStorage.setItem(STORAGE_WORKING_STYLE, String(st.workingStyle));
+      }
+      if (overrides.workingTexts !== undefined) {
+        localStorage.setItem(STORAGE_WORKING_TEXTS, JSON.stringify(st.workingTexts));
+      }
+      if (overrides.workingIcon !== undefined) {
+        localStorage.setItem(STORAGE_WORKING_ICON, String(st.workingIcon));
       }
       if (overrides.userAvatar !== undefined) {
         localStorage.setItem(STORAGE_USER_AVATAR, overrides.userAvatar);
@@ -1510,6 +1573,8 @@
     const rawAgentAv = st.agentAvatar === 'none' ? '' : (st.agentAvatar || mainTheme.agentAvatar || '');
     const effectiveUserAvatar = rawUserAv ? toShortBlobUrl(resolveMediaUrl(rawUserAv)) : '';
     const effectiveAgentAvatar = rawAgentAv ? toShortBlobUrl(resolveMediaUrl(rawAgentAv)) : '';
+    const rawWorkingIcon = st.workingIcon || mainTheme.sticker || rawAgentAv || '';
+    const effectiveWorkingIcon = rawWorkingIcon ? sanitizeCssUrl(toShortBlobUrl(resolveMediaUrl(rawWorkingIcon))) : '';
     const avSize = Math.min(52, Math.max(22, Number(st.avatarSize) || 32));
     const avAgentSize = Math.max(22, avSize - 2);
     const avRadius = Math.min(50, Math.max(0, Number.isFinite(Number(st.avatarRadius)) ? Number(st.avatarRadius) : 50));
@@ -2043,7 +2108,29 @@
         0% { background-position: 180% 0; }
         100% { background-position: -80% 0; }
       }
-      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="1"] {
+      @keyframes agyStarShimmer {
+        0% { background-position: 200% 50%; }
+        100% { background-position: -40% 50%; }
+      }
+      @keyframes agyChibiBounce {
+        0%, 100% { background-position: 11px 58%; }
+        50% { background-position: 11px 30%; }
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry] > *,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry] > * {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+      }
+      /* Style 1: Cyber / Mecha Telemetry */
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="mecha"],
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="mecha"] {
         position: relative !important;
         display: inline-flex !important;
         align-items: center !important;
@@ -2069,18 +2156,8 @@
         user-select: none !important;
         backdrop-filter: none !important;
       }
-      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="1"] > * {
-        position: absolute !important;
-        width: 1px !important;
-        height: 1px !important;
-        padding: 0 !important;
-        margin: -1px !important;
-        overflow: hidden !important;
-        clip: rect(0, 0, 0, 0) !important;
-        white-space: nowrap !important;
-        border: 0 !important;
-      }
-      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="1"]::before {
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="mecha"]::before,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="mecha"]::before {
         content: attr(data-agy-telem-msg);
         color: ${isLight ? '#0f172a' : '#f1f5f9'} !important;
         font-weight: 600 !important;
@@ -2089,7 +2166,8 @@
         text-overflow: ellipsis !important;
         text-shadow: ${isLight ? 'none' : '0 1px 6px rgba(0, 0, 0, 0.85)'} !important;
       }
-      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="1"]::after {
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="mecha"]::after,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="mecha"]::after {
         content: attr(data-agy-telem-hud);
         color: ${mainTheme.primary} !important;
         font-weight: 700 !important;
@@ -2099,6 +2177,152 @@
         padding-left: 10px !important;
         border-left: 1px solid ${isLight ? 'rgba(15, 23, 42, 0.14)' : 'rgba(255, 255, 255, 0.12)'} !important;
         text-shadow: ${isLight ? 'none' : `0 0 8px ${mainTheme.glow || 'rgba(192, 132, 252, 0.5)'}`} !important;
+      }
+      /* Style 2: Schale / Boot HUD Status Pill */
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="hud_pill"],
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="hud_pill"] {
+        position: relative !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        max-width: 100% !important;
+        min-height: 30px !important;
+        padding: 5px 14px !important;
+        margin: 4px 0 !important;
+        border-radius: 9999px !important;
+        background: ${isLight ? 'rgba(255, 255, 255, 0.90)' : 'rgba(10, 12, 26, 0.82)'} !important;
+        background-image: linear-gradient(105deg, transparent 0%, transparent 40%, ${isLight ? 'rgba(15, 23, 42, 0.06)' : (mainTheme.glow || 'rgba(192, 132, 252, 0.24)')} 50%, transparent 60%, transparent 100%) !important;
+        background-size: 230% 100% !important;
+        animation: agyMechaScan 2.8s linear infinite !important;
+        border: 1px solid ${mainTheme.borderColor || (isLight ? 'rgba(15, 23, 42, 0.16)' : 'rgba(192, 132, 252, 0.36)')} !important;
+        box-shadow: ${isLight ? `inset 0 -1.5px 0 ${mainTheme.primary}, 0 3px 12px rgba(15, 23, 42, 0.10)` : `inset 0 -1.5px 0 ${mainTheme.primary}, 0 4px 16px rgba(0, 0, 0, 0.42), 0 0 14px ${mainTheme.glow || 'rgba(192, 132, 252, 0.25)'}`} !important;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+        font-size: 12.5px !important;
+        line-height: 1.35 !important;
+        overflow: hidden !important;
+        user-select: none !important;
+        backdrop-filter: none !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="hud_pill"]::before,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="hud_pill"]::before {
+        content: attr(data-agy-telem-msg);
+        color: ${isLight ? '#0f172a' : '#f8fafc'} !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.015em !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="hud_pill"]::after,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="hud_pill"]::after {
+        content: attr(data-agy-telem-hud);
+        font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        font-variant-numeric: tabular-nums !important;
+        color: ${mainTheme.primary} !important;
+        padding: 1px 7px !important;
+        border-radius: 9999px !important;
+        background: ${isLight ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.07)'} !important;
+        border: 1px solid ${isLight ? 'rgba(15, 23, 42, 0.10)' : 'rgba(255, 255, 255, 0.10)'} !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+      }
+      /* Style 3: Starlight Shimmer (Frameless) */
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="starlight"],
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="starlight"] {
+        position: relative !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        max-width: 100% !important;
+        min-height: 28px !important;
+        padding: 4px 2px !important;
+        margin: 2px 0 !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+        font-size: 13.5px !important;
+        line-height: 1.4 !important;
+        user-select: none !important;
+        backdrop-filter: none !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="starlight"]::before,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="starlight"]::before {
+        content: attr(data-agy-telem-msg);
+        font-weight: 600 !important;
+        letter-spacing: 0.02em !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        background-image: linear-gradient(95deg, ${isLight ? '#334155' : '#cbd5e1'} 0%, ${mainTheme.primary} 36%, ${isLight ? '#0f172a' : '#ffffff'} 50%, ${mainTheme.primary} 64%, ${isLight ? '#334155' : '#cbd5e1'} 100%) !important;
+        background-size: 220% 100% !important;
+        -webkit-background-clip: text !important;
+        background-clip: text !important;
+        color: transparent !important;
+        animation: agyStarShimmer 2.1s linear infinite !important;
+        filter: ${isLight ? 'none' : 'drop-shadow(0 1px 6px rgba(0, 0, 0, 0.92))'} !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="starlight"]::after,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="starlight"]::after {
+        content: attr(data-agy-telem-hud);
+        color: ${mainTheme.primary} !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.14em !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        text-shadow: ${isLight ? 'none' : `0 0 10px ${mainTheme.glow || 'rgba(192, 132, 252, 0.7)'}`} !important;
+      }
+      /* Style 4: Chibi + Mali Handwritten */
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="chibi_mali"],
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="chibi_mali"] {
+        position: relative !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 9px !important;
+        max-width: 100% !important;
+        min-height: 34px !important;
+        padding: ${effectiveWorkingIcon ? '6px 15px 6px 42px' : '6px 15px'} !important;
+        margin: 4px 0 !important;
+        border-radius: 16px !important;
+        background-color: ${isLight ? 'rgba(255, 255, 255, 0.88)' : 'rgba(16, 12, 28, 0.78)'} !important;
+        ${effectiveWorkingIcon ? `
+        background-image: url("${effectiveWorkingIcon}") !important;
+        background-repeat: no-repeat !important;
+        background-size: 24px 24px !important;
+        background-position: 11px 52% !important;
+        animation: agyChibiBounce 1.1s ease-in-out infinite !important;
+        ` : 'background-image: none !important;'}
+        border: 1px solid ${mainTheme.borderColor || (isLight ? 'rgba(15, 23, 42, 0.14)' : 'rgba(192, 132, 252, 0.32)')} !important;
+        box-shadow: ${isLight ? '0 3px 12px rgba(15, 23, 42, 0.10)' : `0 4px 16px rgba(0, 0, 0, 0.42), 0 0 12px ${mainTheme.glow || 'rgba(192, 132, 252, 0.22)'}`} !important;
+        font-family: 'AgyTawaMali', 'Mali', 'Segoe Print', 'Comic Sans MS', cursive !important;
+        font-size: 14.5px !important;
+        line-height: 1.35 !important;
+        overflow: hidden !important;
+        user-select: none !important;
+        backdrop-filter: none !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="chibi_mali"]::before,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="chibi_mali"]::before {
+        content: attr(data-agy-telem-msg);
+        color: ${isLight ? '#0f172a' : '#f8fafc'} !important;
+        font-weight: 500 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        text-shadow: ${isLight ? 'none' : '0 1px 6px rgba(0, 0, 0, 0.82)'} !important;
+      }
+      .agy-shell [data-testid="agent-loading"][data-agy-telemetry="chibi_mali"]::after,
+      #agy-working-preview-stage [data-testid="agent-loading"][data-agy-telemetry="chibi_mali"]::after {
+        content: attr(data-agy-telem-hud);
+        font-family: system-ui, sans-serif !important;
+        font-size: 12px !important;
+        letter-spacing: 0.16em !important;
+        color: ${mainTheme.primary} !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        text-shadow: ${isLight ? 'none' : `0 0 8px ${mainTheme.glow || 'rgba(192, 132, 252, 0.6)'}`} !important;
       }
     `;
 
@@ -2688,22 +2912,37 @@
     }
   }
 
-  const MECHA_WORKING_LINES = [
-    '▸ [NEURAL LINK] PROCESSING FOR SENSEI',
-    '▸ [CORE SYNC] SYNTHESIZING FOR SENSEI',
-    '▸ [SCHALE OS] ANALYZING REQUEST · SENSEI',
-    '▸ [TELEMETRY] COMPUTING OUTPUT · SENSEI'
-  ];
-  const MECHA_BAR_FRAMES = [
-    '▰▱▱▱▱',
-    '▰▰▱▱▱',
-    '▰▰▰▱▱',
-    '▱▰▰▰▱',
-    '▱▱▰▰▰',
-    '▱▱▱▰▰',
-    '▱▱▱▱▰',
-    '▰▱▱▱▰'
-  ];
+  const DEFAULT_WORKING_LINES = {
+    mecha: [
+      '▸ [NEURAL LINK] PROCESSING FOR SENSEI',
+      '▸ [CORE SYNC] SYNTHESIZING FOR SENSEI',
+      '▸ [SCHALE OS] ANALYZING REQUEST · SENSEI',
+      '▸ [TELEMETRY] COMPUTING OUTPUT · SENSEI'
+    ],
+    hud_pill: [
+      'Processing for Sensei...',
+      'Synthesizing response, Sensei ✦',
+      'Schale OS :: Analyzing for Sensei...',
+      'Please wait a moment, Sensei...'
+    ],
+    starlight: [
+      'Working on it, Sensei...',
+      'Crafting a response, Sensei',
+      'Thinking for you, Sensei...',
+      'Just a moment, Sensei'
+    ],
+    chibi_mali: [
+      'Đợi em một chút nhé, Sensei~',
+      'Đang suy nghĩ cho Sensei nè~',
+      'Chờ xíu thôi nha, Sensei~',
+      'Đang xử lý ngay đây, Sensei~'
+    ]
+  };
+  const MECHA_BAR_FRAMES = ['▰▱▱▱▱', '▰▰▱▱▱', '▰▰▰▱▱', '▱▰▰▰▱', '▱▱▰▰▰', '▱▱▱▰▰', '▱▱▱▱▰', '▰▱▱▱▰'];
+  const HUD_EQ_FRAMES = ['▂▅▃', '▆▂▇', '▄▇▂', '▇▄▅', '▃▆▄', '▅▃▆'];
+  const STAR_PREFIX_FRAMES = ['✦', '✧', '✦', '⋆'];
+  const STAR_DOT_FRAMES = ['·', '··', '···', '✦'];
+  const CHIBI_DOT_FRAMES = ['• ◦ ◦', '◦ • ◦', '◦ ◦ •', '• • •'];
 
   function clearMechaTelemetryTimer() {
     if (window.__AGY_TELEM_TIMER__) {
@@ -2722,90 +2961,164 @@
     return `${mins}m${rem < 10 ? '0' : ''}${rem}s`;
   }
 
-  function pickMechaWorkingLine() {
+  function pickWorkingLineForStyle(style, customPool) {
+    const pool = Array.isArray(customPool) && customPool.length > 0
+      ? customPool
+      : (DEFAULT_WORKING_LINES[style] || DEFAULT_WORKING_LINES.mecha);
     const prev = window.__AGY_LAST_MECHA_LINE__ || '';
-    const choices = MECHA_WORKING_LINES.length > 1
-      ? MECHA_WORKING_LINES.filter((line) => line !== prev)
-      : MECHA_WORKING_LINES;
-    const picked = choices[Math.floor(Math.random() * choices.length)] || MECHA_WORKING_LINES[0];
+    const choices = pool.length > 1 ? pool.filter((line) => line !== prev) : pool;
+    const picked = choices[Math.floor(Math.random() * choices.length)] || pool[0];
     window.__AGY_LAST_MECHA_LINE__ = picked;
     return picked;
   }
 
-  function resolveMechaTelemetryMsg(el, rawText) {
+  function resolveWorkingMsg(el, rawText, style, st, frameTick) {
     const clean = String(rawText || '').trim();
-    if (!clean || /^working$/i.test(clean)) {
+    const customPool = Array.isArray(st.workingTexts) ? st.workingTexts.filter(Boolean) : [];
+    const customSig = `${style}|${customPool.join('\n')}`;
+    if (el.dataset.agyTelemSig !== customSig) {
+      el.dataset.agyTelemSig = customSig;
+      delete el.dataset.agyTelemLine;
+    }
+    const isGenericWorking = !clean || /^working$/i.test(clean);
+    let baseText = '';
+    if (isGenericWorking) {
       if (!el.dataset.agyTelemLine) {
-        el.dataset.agyTelemLine = pickMechaWorkingLine();
+        el.dataset.agyTelemLine = pickWorkingLineForStyle(style, customPool);
       }
-      return el.dataset.agyTelemLine;
+      baseText = el.dataset.agyTelemLine;
+    } else if (/^thinking$/i.test(clean)) {
+      if (style === 'mecha') baseText = '▸ [NEURAL CORE] REASONING FOR SENSEI';
+      else if (style === 'chibi_mali') baseText = 'Đang suy nghĩ thật kỹ cho Sensei~';
+      else baseText = 'Thinking for Sensei...';
+    } else if (/^compacting/i.test(clean)) {
+      if (style === 'mecha') baseText = '▸ [MEM COMPACT] OPTIMIZING CONTEXT';
+      else if (style === 'chibi_mali') baseText = 'Đang dọn gọn bộ nhớ cho Sensei~';
+      else baseText = 'Compacting memory context...';
+    } else {
+      const clipped = clean.length > 44 ? `${clean.slice(0, 41)}...` : clean;
+      baseText = style === 'mecha' ? `▸ [ACTIVE OP] ${clipped.toUpperCase()}` : clipped;
     }
-    if (/^thinking$/i.test(clean)) {
-      return '▸ [NEURAL CORE] REASONING FOR SENSEI';
+
+    if (style === 'mecha') {
+      if (customPool.length > 0 && isGenericWorking && !baseText.startsWith('▸')) {
+        return `▸ [SENSEI] ${baseText}`;
+      }
+      return baseText;
     }
-    if (/^compacting/i.test(clean)) {
-      return '▸ [MEM COMPACT] OPTIMIZING CONTEXT';
+    if (style === 'hud_pill') {
+      const eq = HUD_EQ_FRAMES[frameTick % HUD_EQ_FRAMES.length];
+      return `${eq}  ${baseText}`;
     }
-    const clipped = clean.length > 44 ? `${clean.slice(0, 41)}...` : clean;
-    return `▸ [ACTIVE OP] ${clipped.toUpperCase()}`;
+    if (style === 'starlight') {
+      const star = STAR_PREFIX_FRAMES[Math.floor(frameTick / 3) % STAR_PREFIX_FRAMES.length];
+      return `${star}  ${baseText}`;
+    }
+    if (style === 'chibi_mali') {
+      const mainTheme = THEMES[st.themeName] || THEMES[DEFAULT_THEME_KEY] || {};
+      const hasIcon = Boolean(st.workingIcon || mainTheme.sticker || (st.agentAvatar && st.agentAvatar !== 'none') || mainTheme.agentAvatar);
+      return hasIcon ? baseText : `✦ ${baseText}`;
+    }
+    return baseText;
   }
 
-  function updateMechaTelemetryHud(nodes) {
+  function resolveWorkingHud(style, elapsedMs, frameTick, now) {
+    if (style === 'mecha') {
+      const bar = MECHA_BAR_FRAMES[frameTick % MECHA_BAR_FRAMES.length];
+      const cursor = (Math.floor(now / 450) % 2 === 0) ? '▌' : '\u00A0';
+      return `${bar}  ${formatMechaElapsed(elapsedMs)} ${cursor}`;
+    }
+    if (style === 'hud_pill') {
+      return formatMechaElapsed(elapsedMs);
+    }
+    if (style === 'starlight') {
+      return STAR_DOT_FRAMES[Math.floor(frameTick / 3) % STAR_DOT_FRAMES.length];
+    }
+    if (style === 'chibi_mali') {
+      return CHIBI_DOT_FRAMES[Math.floor(frameTick / 2) % CHIBI_DOT_FRAMES.length];
+    }
+    return '';
+  }
+
+  function getActiveWorkingNodes() {
+    const out = [];
+    const shellNodes = document.querySelectorAll('.agy-shell [data-testid="agent-loading"]');
+    for (let i = 0; i < shellNodes.length; i++) out.push(shellNodes[i]);
+    const previewEl = document.getElementById('agy-working-preview-el');
+    if (previewEl && previewEl.offsetParent !== null) {
+      out.push(previewEl);
+    }
+    return out;
+  }
+
+  function clearTelemetryAttrs(el) {
+    delete el.dataset.agyTelemetry;
+    delete el.dataset.agyTelemMsg;
+    delete el.dataset.agyTelemHud;
+    delete el.dataset.agyTelemStart;
+    delete el.dataset.agyTelemRaw;
+    delete el.dataset.agyTelemLine;
+    delete el.dataset.agyTelemSig;
+  }
+
+  function updateMechaTelemetryHud(nodes, st) {
+    const style = WORKING_STYLES[st.workingStyle] ? st.workingStyle : 'mecha';
     const now = Date.now();
-    const frameIdx = Math.floor(now / 125) % MECHA_BAR_FRAMES.length;
-    const bar = MECHA_BAR_FRAMES[frameIdx];
-    const cursor = (Math.floor(now / 450) % 2 === 0) ? '▌' : '\u00A0';
+    const frameTick = Math.floor(now / 125);
     for (let i = 0; i < nodes.length; i++) {
       const el = nodes[i];
       const raw = (el.textContent || '').trim();
-      if (el.dataset.agyTelemRaw !== raw || !el.dataset.agyTelemMsg) {
+      const msg = resolveWorkingMsg(el, raw, style, st, frameTick);
+      if (el.dataset.agyTelemRaw !== raw) {
         el.dataset.agyTelemRaw = raw;
-        el.dataset.agyTelemMsg = resolveMechaTelemetryMsg(el, raw);
+      }
+      if (el.dataset.agyTelemMsg !== msg) {
+        el.dataset.agyTelemMsg = msg;
       }
       let startMs = Number(el.dataset.agyTelemStart);
       if (!Number.isFinite(startMs) || startMs <= 0) {
         startMs = now;
         el.dataset.agyTelemStart = String(startMs);
       }
-      const hud = `${bar}  ${formatMechaElapsed(now - startMs)} ${cursor}`;
+      const hud = resolveWorkingHud(style, now - startMs, frameTick, now);
       if (el.dataset.agyTelemHud !== hud) {
         el.dataset.agyTelemHud = hud;
       }
-      if (el.dataset.agyTelemetry !== '1') {
-        el.dataset.agyTelemetry = '1';
+      if (el.dataset.agyTelemetry !== style) {
+        el.dataset.agyTelemetry = style;
       }
     }
   }
 
   function syncWorkingTelemetry(stOverride) {
     const st = stOverride || getState();
-    const nodes = document.querySelectorAll('.agy-shell [data-testid="agent-loading"]');
-    if (!st.mechaWorking) {
+    const style = WORKING_STYLES[st.workingStyle] ? st.workingStyle : 'mecha';
+    if (style === 'default' || !st.mechaWorking) {
       clearMechaTelemetryTimer();
-      document.querySelectorAll('[data-agy-telemetry]').forEach((el) => {
-        delete el.dataset.agyTelemetry;
-        delete el.dataset.agyTelemMsg;
-        delete el.dataset.agyTelemHud;
-        delete el.dataset.agyTelemStart;
-        delete el.dataset.agyTelemRaw;
-        delete el.dataset.agyTelemLine;
-      });
+      document.querySelectorAll('[data-agy-telemetry]').forEach(clearTelemetryAttrs);
       return;
     }
+    const nodes = getActiveWorkingNodes();
     if (!nodes.length) {
       clearMechaTelemetryTimer();
       return;
     }
-    updateMechaTelemetryHud(nodes);
+    updateMechaTelemetryHud(nodes, st);
     if (!window.__AGY_TELEM_TIMER__) {
       window.__AGY_TELEM_TIMER__ = setInterval(() => {
         if (document.hidden) return;
-        const curNodes = document.querySelectorAll('.agy-shell [data-testid="agent-loading"]');
-        if (!curNodes.length || !getState().mechaWorking) {
+        const curSt = getState();
+        if (curSt.workingStyle === 'default' || !curSt.mechaWorking) {
+          clearMechaTelemetryTimer();
+          document.querySelectorAll('[data-agy-telemetry]').forEach(clearTelemetryAttrs);
+          return;
+        }
+        const curNodes = getActiveWorkingNodes();
+        if (!curNodes.length) {
           clearMechaTelemetryTimer();
           return;
         }
-        updateMechaTelemetryHud(curNodes);
+        updateMechaTelemetryHud(curNodes, curSt);
       }, 125);
     }
   }
@@ -2874,14 +3187,15 @@
     STORAGE_AVATAR_SIZE, STORAGE_AVATAR_RADIUS, STORAGE_BOOT_INTRO,
     STORAGE_BOOT_OPERATOR, STORAGE_BOOT_PASS_HASH,
     STORAGE_SKETCH_REVEAL, STORAGE_TAWA_GREETING, STORAGE_MECHA_WORKING,
-    CHECK_SVG, INPUT_STYLES,
+    STORAGE_WORKING_STYLE, STORAGE_WORKING_TEXTS, STORAGE_WORKING_ICON,
+    CHECK_SVG, INPUT_STYLES, WORKING_STYLES,
     escapeHtml, hashBootPasscode, resolveBootOperator,
     canonicalMediaKey, isSameMediaUrl, deriveMediaName,
     getMediaLibrary, upsertSavedMedia, removeSavedMediaFromStore,
     normalizeGreetingLines, getState, resolveMediaUrl, sanitizeCssUrl,
     findActiveShell, clearRevealRaf, clearBootTimers, stopBootAudio,
     teardownBootOverlay, scheduleRevealWhenReady, applyTheme,
-    syncEmptyGreeting, playOneShotTaskAudio, playRandomTaskVoice,
+    syncEmptyGreeting, syncWorkingTelemetry, playOneShotTaskAudio, playRandomTaskVoice,
     mountBootSequence, triggerSketchBloomReveal
   };
 

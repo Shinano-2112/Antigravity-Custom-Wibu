@@ -25,8 +25,12 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     STORAGE_SKETCH_REVEAL,
     STORAGE_TAWA_GREETING,
     STORAGE_MECHA_WORKING,
+    STORAGE_WORKING_STYLE,
+    STORAGE_WORKING_TEXTS,
+    STORAGE_WORKING_ICON,
     CHECK_SVG,
     INPUT_STYLES,
+    WORKING_STYLES,
     escapeHtml,
     hashBootPasscode,
     resolveBootOperator,
@@ -42,6 +46,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     sanitizeCssUrl,
     applyTheme,
     syncEmptyGreeting,
+    syncWorkingTelemetry,
     playOneShotTaskAudio,
     playRandomTaskVoice,
     mountBootSequence,
@@ -107,19 +112,21 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
 
       document.body.appendChild(backdrop);
 
-      backdrop.addEventListener('click', (e) => {
-        if (e.target === backdrop) backdrop.style.display = 'none';
-      });
-      backdrop.querySelector('#agy-theme-modal-close-btn').addEventListener('click', () => {
+      const closeModal = () => {
         backdrop.style.display = 'none';
+        if (typeof syncWorkingTelemetry === 'function') syncWorkingTelemetry();
+      };
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) closeModal();
       });
+      backdrop.querySelector('#agy-theme-modal-close-btn').addEventListener('click', closeModal);
       if (window.__AGY_MODAL_AC__) {
         try { window.__AGY_MODAL_AC__.abort(); } catch (e) {}
       }
       window.__AGY_MODAL_AC__ = new AbortController();
       window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && backdrop.style.display !== 'none') {
-          backdrop.style.display = 'none';
+          closeModal();
         }
       }, { signal: window.__AGY_MODAL_AC__.signal });
     }
@@ -134,6 +141,15 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     const mainTheme = THEMES[st.themeName] || THEMES[DEFAULT_THEME_KEY];
     const effUserAv = st.userAvatar === 'none' ? '' : (st.userAvatar || mainTheme.userAvatar || '');
     const effAgentAv = st.agentAvatar === 'none' ? '' : (st.agentAvatar || mainTheme.agentAvatar || '');
+    const workingStyleMap = WORKING_STYLES || {
+      mecha: { label: 'Mecha Telemetry', badge: '⚡ Mecha', desc: 'Sci-Fi monospace + đồng hồ thực' },
+      hud_pill: { label: 'Schale HUD Pill', badge: '💠 HUD Pill', desc: 'Viên thuốc HUD + equalizer' },
+      starlight: { label: 'Starlight Shimmer', badge: '✦ Starlight', desc: 'Không khung + chữ ánh sao' },
+      chibi_mali: { label: 'Chibi + Mali', badge: '🌸 Chibi', desc: 'Font viết tay Mali + icon/GIF' },
+      default: { label: 'Mặc định', badge: '○ Mặc định', desc: 'Chữ Working nguyên bản' }
+    };
+    const activeWorkingMeta = workingStyleMap[st.workingStyle] || workingStyleMap.mecha;
+    const effWorkingIconUrl = resolveMediaUrl(st.workingIcon || mainTheme.sticker || effAgentAv || '');
 
     container.innerHTML = `
       <div id="agy-theme-scroll-container" style="padding: 24px 32px 48px 32px; max-width: 860px; margin: 0 auto; overflow-y: auto; height: 100%; color: #f4f4f5;">
@@ -195,13 +211,12 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
                 <input id="agy-task-voice-toggle" type="checkbox" ${st.taskVoiceEnabled ? 'checked' : ''} style="accent-color: ${mainTheme.primary}; cursor: pointer;" />
                 Voice xong Task
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #d4d4d8; cursor: pointer;">
-                <input id="agy-mecha-working-toggle" type="checkbox" ${st.mechaWorking ? 'checked' : ''} style="accent-color: ${mainTheme.primary}; cursor: pointer;" />
-                Mecha Telemetry
-              </label>
               <span id="agy-upload-status" style="font-size: 11.5px; color: #93c5fd;"></span>
             </div>
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <button id="agy-working-custom-toggle" type="button" style="padding: 4px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid ${mainTheme.borderColor}; color: #e4e4e7; font-size: 11.5px; cursor: pointer;">
+                ${escapeHtml(activeWorkingMeta.badge)} · Working ▾
+              </button>
               <button id="agy-boot-auth-toggle" type="button" style="padding: 4px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid ${mainTheme.borderColor}; color: #e4e4e7; font-size: 11.5px; cursor: pointer;">
                 ${st.bootPassHash ? '🔒 Boot Pass ▾' : '🔓 Đặt Boot Pass ▾'}
               </button>
@@ -276,6 +291,63 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
               <div style="display: flex; justify-content: flex-end; gap: 8px;">
                 <button id="agy-greeting-reset" type="button" style="padding: 4px 10px; border-radius: 7px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #d4d4d8; font-size: 11.5px; cursor: pointer;">Xóa hết</button>
                 <button id="agy-greeting-save" type="button" style="padding: 4px 12px; border-radius: 7px; background: ${mainTheme.primary}; color: #090d16; font-weight: 600; font-size: 11.5px; border: none; cursor: pointer;">Lưu câu chào</button>
+              </div>
+            </div>
+          </div>
+          <div id="agy-working-custom-box" style="display: none; flex-direction: column; gap: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: rgba(0,0,0,0.32); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 14px;">
+              <div style="display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1;">
+                <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #a1a1aa;">Xem trước trạng thái Working (Live Preview)</span>
+                <div id="agy-working-preview-stage" style="display: flex; align-items: center; min-height: 40px; overflow: hidden;">
+                  <div id="agy-working-preview-el" data-testid="agent-loading" style="color: #a1a1aa; font-size: 13px;"><span>Working</span></div>
+                </div>
+              </div>
+              <button id="agy-working-preview-shuffle" type="button" style="padding: 5px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: #e4e4e7; font-size: 11.5px; cursor: pointer; white-space: nowrap;">🎲 Đổi câu</button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px;">
+              ${Object.entries(workingStyleMap).map(([key, item]) => {
+                const isSel = key === st.workingStyle;
+                return `
+                  <div class="agy-working-style-card" data-wstyle="${key}" style="border-radius: 9px; border: ${isSel ? `1.5px solid ${mainTheme.primary}` : '1px solid rgba(255,255,255,0.10)'}; background: ${isSel ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.24)'}; padding: 9px 11px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color 0.15s ease, background-color 0.15s ease;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
+                      <span style="font-size: 12px; font-weight: 600; color: #f4f4f5;">${escapeHtml(item.badge)}</span>
+                      <div class="agy-wstyle-check" style="width: 14px; height: 14px; display: flex; align-items: center; justify-content: center;">${isSel ? CHECK_SVG : ''}</div>
+                    </div>
+                    <span style="font-size: 10.5px; color: #a1a1aa; line-height: 1.35;">${escapeHtml(item.desc)}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+              <div style="display: flex; flex-direction: column; gap: 7px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 11px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <span style="font-size: 12px; font-weight: 600; color: #f4f4f5;">Câu trạng thái Custom (mỗi dòng 1 câu)</span>
+                  <span id="agy-working-text-msg" style="font-size: 11px; color: #93c5fd;"></span>
+                </div>
+                <textarea id="agy-working-lines" rows="3" placeholder="Để trống sẽ tự dùng bộ câu Sensei theo từng Style. Nhập mỗi dòng 1 câu để xoay ngẫu nhiên..." style="width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.38); color: #f4f4f5; border: 1px solid ${mainTheme.borderColor}; border-radius: 7px; padding: 6px 8px; font-size: 12px; resize: vertical; line-height: 1.4;">${escapeHtml((st.workingTexts || []).join('\n'))}</textarea>
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                  <button id="agy-working-text-reset" type="button" style="padding: 4px 10px; border-radius: 7px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #d4d4d8; font-size: 11.5px; cursor: pointer;">Xóa hết</button>
+                  <button id="agy-working-text-save" type="button" style="padding: 4px 12px; border-radius: 7px; background: ${mainTheme.primary}; color: #090d16; font-weight: 600; font-size: 11.5px; border: none; cursor: pointer;">Lưu câu</button>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; justify-content: space-between; gap: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 11px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <span style="font-size: 12px; font-weight: 600; color: #f4f4f5;">Icon / GIF Chibi Mini (kiểu Chibi + Mali)</span>
+                  <span id="agy-working-icon-msg" style="font-size: 11px; color: #93c5fd;"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div id="agy-working-icon-preview" style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; border: 1px solid ${mainTheme.borderColor}; background: rgba(255,255,255,0.05) ${effWorkingIconUrl ? `url('${sanitizeCssUrl(effWorkingIconUrl)}') center/contain no-repeat` : ''}; display: flex; align-items: center; justify-content: center; font-size: 16px; color: ${mainTheme.primary};">${effWorkingIconUrl ? '' : '✦'}</div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                      <label style="padding: 4px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid ${mainTheme.borderColor}; color: #f4f4f5; font-size: 11.5px; cursor: pointer; white-space: nowrap;">
+                        Chọn GIF / Ảnh
+                        <input id="agy-working-icon-upload" type="file" accept="image/gif,image/webp,image/png,image/jpeg,image/svg+xml,image/*" style="display: none;" />
+                      </label>
+                      <button id="agy-working-icon-clear" type="button" style="padding: 4px 9px; border-radius: 7px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #d4d4d8; font-size: 11.5px; cursor: pointer;">Mặc định</button>
+                    </div>
+                    <span style="font-size: 10.5px; color: #71717a; line-height: 1.35;">Hỗ trợ GIF/WebP động (vd: Arona/mèo gõ phím). Để trống sẽ tự lấy sticker của preset.</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -512,12 +584,6 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     if (greetingToggle) {
       greetingToggle.addEventListener('change', (e) => {
         applyTheme({ tawaGreeting: e.target.checked });
-      });
-    }
-    const mechaWorkingToggle = container.querySelector('#agy-mecha-working-toggle');
-    if (mechaWorkingToggle) {
-      mechaWorkingToggle.addEventListener('change', (e) => {
-        applyTheme({ mechaWorking: e.target.checked });
       });
     }
     function closeHostModalsForPreview() {
@@ -850,7 +916,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
             throw new Error('Config must be a JSON object');
           }
           const allowed = {};
-          const keys = ['themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting', 'mechaWorking'];
+          const keys = ['themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting', 'mechaWorking', 'workingStyle', 'workingTexts', 'workingIcon'];
           keys.forEach((k) => {
             if (parsed[k] !== undefined) allowed[k] = parsed[k];
           });
@@ -881,6 +947,9 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       localStorage.removeItem(STORAGE_SKETCH_REVEAL);
       localStorage.removeItem(STORAGE_TAWA_GREETING);
       localStorage.removeItem(STORAGE_MECHA_WORKING);
+      localStorage.removeItem(STORAGE_WORKING_STYLE);
+      localStorage.removeItem(STORAGE_WORKING_TEXTS);
+      localStorage.removeItem(STORAGE_WORKING_ICON);
       localStorage.removeItem(STORAGE_TASK_VOICE_ENABLED);
       localStorage.removeItem(STORAGE_TASK_VOICE_VOL);
       localStorage.removeItem(STORAGE_CUSTOM_GREETINGS);
@@ -906,13 +975,16 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         bootIntro: true,
         sketchReveal: true,
         tawaGreeting: true,
-        mechaWorking: true
+        mechaWorking: true,
+        workingStyle: 'mecha',
+        workingTexts: [],
+        workingIcon: ''
       });
       syncModeButtons(defMode);
       if (bootToggle) bootToggle.checked = true;
       if (sketchToggle) sketchToggle.checked = true;
       if (greetingToggle) greetingToggle.checked = true;
-      if (mechaWorkingToggle) mechaWorkingToggle.checked = true;
+      if (typeof syncWorkingUiState === 'function') syncWorkingUiState();
       if (taskVoiceToggle) taskVoiceToggle.checked = true;
       if (taskVoiceVolSlider) taskVoiceVolSlider.value = 85;
       if (taskVoiceVolVal) taskVoiceVolVal.textContent = '85%';
@@ -1181,6 +1253,142 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         if (greetingMsgEl) {
           greetingMsgEl.textContent = 'Đã xóa danh sách câu chào';
           setTimeout(() => { if (greetingMsgEl) greetingMsgEl.textContent = ''; }, 2000);
+        }
+      });
+    }
+
+    const workingCustomToggle = container.querySelector('#agy-working-custom-toggle');
+    const workingCustomBox = container.querySelector('#agy-working-custom-box');
+    const workingPreviewEl = container.querySelector('#agy-working-preview-el');
+    const workingPreviewShuffle = container.querySelector('#agy-working-preview-shuffle');
+    const workingLinesEl = container.querySelector('#agy-working-lines');
+    const workingTextSaveBtn = container.querySelector('#agy-working-text-save');
+    const workingTextResetBtn = container.querySelector('#agy-working-text-reset');
+    const workingTextMsgEl = container.querySelector('#agy-working-text-msg');
+    const workingIconPreview = container.querySelector('#agy-working-icon-preview');
+    const workingIconUpload = container.querySelector('#agy-working-icon-upload');
+    const workingIconClear = container.querySelector('#agy-working-icon-clear');
+    const workingIconMsg = container.querySelector('#agy-working-icon-msg');
+
+    function syncWorkingUiState() {
+      const cur = getState();
+      const curTh = THEMES[cur.themeName] || THEMES[DEFAULT_THEME_KEY] || {};
+      const meta = workingStyleMap[cur.workingStyle] || workingStyleMap.mecha;
+      const isOpen = workingCustomBox && workingCustomBox.style.display !== 'none';
+      if (workingCustomToggle) {
+        workingCustomToggle.textContent = `${meta.badge} · Working ${isOpen ? '▴' : '▾'}`;
+      }
+      container.querySelectorAll('.agy-working-style-card').forEach((card) => {
+        const isSel = card.dataset.wstyle === cur.workingStyle;
+        card.style.border = isSel ? `1.5px solid ${curTh.primary || '#c084fc'}` : '1px solid rgba(255,255,255,0.10)';
+        card.style.background = isSel ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.24)';
+        const slot = card.querySelector('.agy-wstyle-check');
+        if (slot) slot.innerHTML = isSel ? CHECK_SVG : '';
+      });
+      if (workingLinesEl && document.activeElement !== workingLinesEl) {
+        workingLinesEl.value = (cur.workingTexts || []).join('\n');
+      }
+      if (workingIconPreview) {
+        const curAgent = cur.agentAvatar === 'none' ? '' : (cur.agentAvatar || curTh.agentAvatar || '');
+        const resolvedIcon = resolveMediaUrl(cur.workingIcon || curTh.sticker || curAgent || '');
+        if (resolvedIcon) {
+          workingIconPreview.style.backgroundImage = `url("${sanitizeCssUrl(resolvedIcon)}")`;
+          workingIconPreview.style.backgroundSize = 'contain';
+          workingIconPreview.style.backgroundPosition = 'center';
+          workingIconPreview.style.backgroundRepeat = 'no-repeat';
+          workingIconPreview.textContent = '';
+        } else {
+          workingIconPreview.style.backgroundImage = 'none';
+          workingIconPreview.textContent = '✦';
+        }
+      }
+      if (workingPreviewEl) {
+        delete workingPreviewEl.dataset.agyTelemLine;
+        delete workingPreviewEl.dataset.agyTelemSig;
+        workingPreviewEl.dataset.agyTelemStart = String(Date.now());
+      }
+      if (typeof syncWorkingTelemetry === 'function') syncWorkingTelemetry();
+    }
+
+    if (workingCustomToggle && workingCustomBox) {
+      workingCustomToggle.addEventListener('click', () => {
+        const isHidden = workingCustomBox.style.display === 'none';
+        workingCustomBox.style.display = isHidden ? 'flex' : 'none';
+        syncWorkingUiState();
+      });
+    }
+    if (workingPreviewShuffle && workingPreviewEl) {
+      workingPreviewShuffle.addEventListener('click', () => {
+        delete workingPreviewEl.dataset.agyTelemLine;
+        workingPreviewEl.dataset.agyTelemStart = String(Date.now());
+        if (typeof syncWorkingTelemetry === 'function') syncWorkingTelemetry();
+      });
+    }
+    container.querySelectorAll('.agy-working-style-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const nextStyle = card.dataset.wstyle || 'mecha';
+        applyTheme({ workingStyle: nextStyle });
+        syncWorkingUiState();
+      });
+    });
+    if (workingTextSaveBtn && workingLinesEl) {
+      workingTextSaveBtn.addEventListener('click', () => {
+        const lines = normalizeGreetingLines(workingLinesEl.value.split(/\r?\n/));
+        applyTheme({ workingTexts: lines });
+        syncWorkingUiState();
+        if (workingTextMsgEl) {
+          workingTextMsgEl.textContent = lines.length > 0 ? `Đã lưu (${lines.length} câu)` : 'Đang dùng câu mặc định';
+          setTimeout(() => { if (workingTextMsgEl) workingTextMsgEl.textContent = ''; }, 2000);
+        }
+      });
+    }
+    if (workingTextResetBtn && workingLinesEl) {
+      workingTextResetBtn.addEventListener('click', () => {
+        workingLinesEl.value = '';
+        applyTheme({ workingTexts: [] });
+        syncWorkingUiState();
+        if (workingTextMsgEl) {
+          workingTextMsgEl.textContent = 'Đã khôi phục mặc định';
+          setTimeout(() => { if (workingTextMsgEl) workingTextMsgEl.textContent = ''; }, 2000);
+        }
+      });
+    }
+    if (workingIconUpload) {
+      workingIconUpload.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (workingIconMsg) workingIconMsg.textContent = 'Đang nạp icon...';
+        const uploaded = await uploadMediaToServer(file, file.name || 'working_icon.gif');
+        let iconUrl = uploaded && uploaded.url ? uploaded.url : '';
+        if (!iconUrl) {
+          iconUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(file);
+          });
+        }
+        workingIconUpload.value = '';
+        if (!iconUrl) {
+          if (workingIconMsg) workingIconMsg.textContent = 'Không đọc được tệp!';
+          return;
+        }
+        applyTheme({ workingIcon: iconUrl });
+        syncWorkingUiState();
+        if (workingIconMsg) {
+          workingIconMsg.textContent = getState().workingStyle === 'chibi_mali' ? 'Đã cập nhật icon ✓' : 'Đã lưu (chọn Chibi + Mali để xem)';
+          setTimeout(() => { if (workingIconMsg) workingIconMsg.textContent = ''; }, 2600);
+        }
+      });
+    }
+    if (workingIconClear) {
+      workingIconClear.addEventListener('click', () => {
+        localStorage.removeItem(STORAGE_WORKING_ICON);
+        applyTheme({ workingIcon: '' });
+        syncWorkingUiState();
+        if (workingIconMsg) {
+          workingIconMsg.textContent = 'Đã về icon mặc định';
+          setTimeout(() => { if (workingIconMsg) workingIconMsg.textContent = ''; }, 2000);
         }
       });
     }
