@@ -1463,6 +1463,17 @@
         box-sizing: border-box !important;
         overflow: hidden !important;
       }
+      .agy-shell [data-testid="agent-response"][data-agy-empty-card="1"] {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+      }
+      .agy-shell [data-testid="agent-response"][data-agy-empty-card="1"]::before {
+        display: none !important;
+      }
       .agy-shell [data-testid="agent-response"] .md-table-bleed,
       .agy-shell [data-testid="agent-response"] .md-table-host {
         width: 100% !important;
@@ -1988,6 +1999,7 @@
     document.querySelectorAll('.agy-table-scroll-wrap').forEach((el) => el.classList.remove('agy-table-scroll-wrap'));
     document.querySelectorAll('[data-agy-tbl-wrapped]').forEach((el) => delete el.dataset.agyTblWrapped);
     document.querySelectorAll('[data-agy-has-hole]').forEach((el) => delete el.dataset.agyHasHole);
+    document.querySelectorAll('[data-agy-empty-card]').forEach((el) => delete el.dataset.agyEmptyCard);
     const liveBgLayer = document.getElementById('agy-live-bg-layer');
     if (liveBgLayer) liveBgLayer.remove();
     const styleEl = document.getElementById('antigravity-custom-theme-active');
@@ -2431,6 +2443,30 @@
     }, 450);
   }
 
+  function syncEmptyAgentResponses(onlyTail = false) {
+    const responses = document.querySelectorAll('.agy-shell [data-testid="agent-response"]');
+    if (!responses.length) return;
+    const start = onlyTail ? Math.max(0, responses.length - 3) : 0;
+    for (let i = start; i < responses.length; i++) {
+      const el = responses[i];
+      let hasVisible = false;
+      for (let j = 0; j < el.children.length; j++) {
+        const child = el.children[j];
+        if (child.classList && child.classList.contains('sr-only')) continue;
+        if ((child.textContent && child.textContent.trim().length > 0)
+          || child.querySelector('img, svg, canvas, video, table, pre, code, button, input, iframe')) {
+          hasVisible = true;
+          break;
+        }
+      }
+      if (hasVisible) {
+        if (el.dataset.agyEmptyCard) delete el.dataset.agyEmptyCard;
+      } else if (el.dataset.agyEmptyCard !== '1') {
+        el.dataset.agyEmptyCard = '1';
+      }
+    }
+  }
+
   function tick(forceMetrics = false) {
     const activeShell = findActiveShell();
     if (activeShell) {
@@ -2443,12 +2479,16 @@
     injectSettingsModalButton();
     hookSidebarScroll();
     hookShellMetrics(forceMetrics);
+    syncEmptyAgentResponses(false);
     syncMarkdownTableWrappers();
     syncEmptyGreeting();
     syncTaskCompletionVoice();
   }
 
   function scheduleTick(mutations) {
+    if (Array.isArray(mutations)) {
+      syncEmptyAgentResponses(true);
+    }
     const attrChanged = Array.isArray(mutations) && mutations.some((m) => m.type === 'attributes');
     if (attrChanged) {
       window.__AGY_FORCE_METRICS__ = true;
