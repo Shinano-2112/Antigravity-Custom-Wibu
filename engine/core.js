@@ -55,6 +55,7 @@
   }
 
   const STORAGE_THEME = 'agy_theme_v3';
+  const STORAGE_THEME_ENABLED = 'agy_theme_enabled_v3';
   const STORAGE_BUBBLE = 'agy_bubble_v3';
   const STORAGE_INPUT = 'agy_input_v3';
   const STORAGE_DIMMING = 'agy_dimming_v3';
@@ -450,6 +451,10 @@
       return window.__AGY_STATE_CACHE__;
     }
     const init = window.__AGY_INITIAL_CONFIG__ || {};
+    const storedThemeEnabled = safeGetStorage(STORAGE_THEME_ENABLED);
+    const themeEnabled = storedThemeEnabled !== null
+      ? storedThemeEnabled !== 'false'
+      : (init.themeEnabled !== undefined ? Boolean(init.themeEnabled) : true);
     const rawTheme = safeGetStorage(STORAGE_THEME) || init.themeName || DEFAULT_THEME_KEY;
     const themeName = THEMES[rawTheme] ? rawTheme : DEFAULT_THEME_KEY;
     const rawBubble = safeGetStorage(STORAGE_BUBBLE) || init.bubbleName || themeName;
@@ -514,7 +519,7 @@
     const rawWorkIcon = safeGetStorage(STORAGE_WORKING_ICON);
     const workingIcon = rawWorkIcon !== null ? rawWorkIcon : (init.workingIcon || '');
     const cached = {
-      themeName, bubbleName, inputStyle, dimming, wpEnabled, wpMode,
+      themeEnabled, themeName, bubbleName, inputStyle, dimming, wpEnabled, wpMode,
       customWp, customVideo, savedImages, savedVideos,
       taskVoices, taskVoiceEnabled, taskVoiceVol, customGreetings,
       userAvatar, agentAvatar, glassBlur, avatarSize, avatarRadius,
@@ -842,6 +847,7 @@
   function triggerSketchBloomReveal(instant = false) {
     clearRevealRaf();
     const st = getState();
+    if (!st.themeEnabled) return;
     const layer = document.getElementById('agy-live-bg-layer');
     const mediaWrap = document.getElementById('agy-live-media-wrap');
     const canvas = document.getElementById('agy-sketch-reveal-canvas');
@@ -1163,7 +1169,7 @@
 
   function mountBootSequence(forceReplay = false, attempt = 0) {
     const st = getState();
-    if (!forceReplay && (!st.bootIntro || window.__AGY_BOOT_PLAYED__ || window.__AGY_BOOT_LOADING__)) {
+    if (!forceReplay && (!st.themeEnabled || !st.bootIntro || window.__AGY_BOOT_PLAYED__ || window.__AGY_BOOT_LOADING__)) {
       return;
     }
     if (!document.body || !document.head) {
@@ -1243,7 +1249,9 @@
   }
 
   function applyTheme(overrides = {}, opts = {}) {
+    const prevEnabled = getState().themeEnabled !== false;
     const st = { ...getState(), ...overrides };
+    st.themeEnabled = st.themeEnabled !== false;
     if (overrides.workingStyle !== undefined) {
       st.workingStyle = WORKING_STYLES[overrides.workingStyle] ? overrides.workingStyle : 'mecha';
       st.mechaWorking = st.workingStyle !== 'default';
@@ -1251,8 +1259,8 @@
       st.mechaWorking = Boolean(overrides.mechaWorking);
       st.workingStyle = st.mechaWorking ? (st.workingStyle && st.workingStyle !== 'default' ? st.workingStyle : 'mecha') : 'default';
     }
-    if (st.tawaGreeting || st.workingStyle === 'chibi_mali') ensureGreetingFonts();
     try {
+      localStorage.setItem(STORAGE_THEME_ENABLED, String(st.themeEnabled));
       localStorage.setItem(STORAGE_THEME, st.themeName);
       localStorage.setItem(STORAGE_BUBBLE, st.bubbleName);
       localStorage.setItem(STORAGE_INPUT, st.inputStyle);
@@ -1330,6 +1338,19 @@
     if (!opts.skipSave) {
       persistThemeConfig(st, Boolean(opts.debounceSave));
     }
+
+    if (!st.themeEnabled) {
+      disableThemeVisuals();
+      return;
+    }
+
+    if (!prevEnabled && overrides.themeEnabled === true) {
+      window.__AGY_BOOT_PLAYED__ = true;
+      window.__AGY_BOOT_FINISHED__ = true;
+      window.__AGY_REVEAL_DONE_ONCE__ = true;
+    }
+
+    if (st.tawaGreeting || st.workingStyle === 'chibi_mali') ensureGreetingFonts();
 
     const mainTheme = THEMES[st.themeName] || THEMES[DEFAULT_THEME_KEY];
     const bubbleTheme = THEMES[st.bubbleName] || mainTheme;
@@ -2330,6 +2351,12 @@
     scheduleTitleBarSync(st);
     syncEmptyGreeting(st);
     syncWorkingTelemetry(st);
+    if (!prevEnabled) {
+      hookSidebarScroll();
+      hookShellMetrics(true);
+      syncEmptyAgentResponses(false);
+      syncMarkdownTableWrappers();
+    }
   }
 
   function syncTitleBarOverlay(stOverride) {
@@ -2337,6 +2364,10 @@
     const activeTh = THEMES[st.themeName] || THEMES[DEFAULT_THEME_KEY] || {};
     if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
       try {
+        if (!st.themeEnabled) {
+          window.electronNative.setTitleBarOverlay({ color: '#111114', symbolColor: '#f8fafc' });
+          return;
+        }
         window.electronNative.setTitleBarOverlay({
           color: st.wpEnabled ? '#00000000' : '#111114',
           symbolColor: (st.wpEnabled && activeTh.isLight) ? '#0f172a' : '#f8fafc'
@@ -2361,9 +2392,8 @@
     });
   }
 
-  function removeCustomTheme() {
+  function disableThemeVisuals() {
     clearTitleBarTimers();
-    clearStartupWatchdog();
     clearBootRetryTimer();
     window.__AGY_BOOT_LOADING__ = false;
     clearRevealRaf();
@@ -2373,59 +2403,43 @@
       clearTimeout(window.__AGY_TASK_COMPLETE_TIMER__);
       window.__AGY_TASK_COMPLETE_TIMER__ = null;
     }
-    if (window.__AGY_SAVE_TIMER__) {
-      clearTimeout(window.__AGY_SAVE_TIMER__);
-      window.__AGY_SAVE_TIMER__ = 0;
-    }
+    taskVoiceState.wasRunning = false;
     if (window.__AGY_BLUR_TIMER__) {
       clearTimeout(window.__AGY_BLUR_TIMER__);
       window.__AGY_BLUR_TIMER__ = 0;
     }
-    if (window.__AGY_MODAL_OBSERVER__) {
-      try { window.__AGY_MODAL_OBSERVER__.disconnect(); } catch (e) {}
-      window.__AGY_MODAL_OBSERVER__ = null;
-    }
-    window.__AGY_OBSERVER_ROOT__ = null;
+    window.__AGY_BLUR_GEN__ = (window.__AGY_BLUR_GEN__ || 0) + 1;
     if (window.__AGY_METRICS_RAF__) {
       cancelAnimationFrame(window.__AGY_METRICS_RAF__);
       window.__AGY_METRICS_RAF__ = 0;
-    }
-    if (window.__AGY_TICK_RAF__) {
-      cancelAnimationFrame(window.__AGY_TICK_RAF__);
-      window.__AGY_TICK_RAF__ = 0;
-    }
-    if (window.__AGY_TICK_TIMER__) {
-      clearTimeout(window.__AGY_TICK_TIMER__);
-      window.__AGY_TICK_TIMER__ = 0;
     }
     if (window.__AGY_SHELL_RO__) {
       try { window.__AGY_SHELL_RO__.disconnect(); } catch (e) {}
       window.__AGY_SHELL_RO__ = null;
     }
-    if (window.__AGY_SCROLL_AC__) {
-      try { window.__AGY_SCROLL_AC__.abort(); } catch (e) {}
-    }
-    if (window.__AGY_MODAL_AC__) {
-      try { window.__AGY_MODAL_AC__.abort(); } catch (e) {}
-      window.__AGY_MODAL_AC__ = null;
-    }
+    window.__AGY_HOLE_EL__ = null;
+    window.__AGY_SIDE_EL__ = null;
+    window.__AGY_SIDE_WRAP_EL__ = null;
+    window.__AGY_MAIN_EL__ = null;
+    window.__AGY_METRICS_SHELL__ = null;
+    window.__AGY_LAST_SIDE_GEO__ = '';
+    window.__AGY_LAST_HOLE_ATTR__ = '';
+    window.__AGY_LAST_SIDE_EL__ = null;
+    window.__AGY_LAST_SIDE_HAS_CHILD__ = false;
     revokeAllAgyBlobs();
-    invalidateStateCache();
     window.__AGY_METRICS_STATE__ = null;
     window.__AGY_LAST_METRICS_CSS__ = '';
+    window.__AGY_GREETING_ACTIVE__ = false;
     document.querySelectorAll('.agy-table-scroll-wrap').forEach((el) => el.classList.remove('agy-table-scroll-wrap'));
     document.querySelectorAll('[data-agy-tbl-wrapped]').forEach((el) => delete el.dataset.agyTblWrapped);
     document.querySelectorAll('[data-agy-has-hole]').forEach((el) => delete el.dataset.agyHasHole);
     document.querySelectorAll('[data-agy-empty-card]').forEach((el) => delete el.dataset.agyEmptyCard);
+    document.querySelectorAll('[data-agy-tbo-mounted]').forEach((el) => delete el.dataset.agyTboMounted);
+    document.querySelectorAll('.agy-scrolled').forEach((el) => el.classList.remove('agy-scrolled'));
     clearMechaTelemetryTimer();
-    document.querySelectorAll('[data-agy-telemetry]').forEach((el) => {
-      delete el.dataset.agyTelemetry;
-      delete el.dataset.agyTelemMsg;
-      delete el.dataset.agyTelemHud;
-      delete el.dataset.agyTelemStart;
-      delete el.dataset.agyTelemRaw;
-      delete el.dataset.agyTelemLine;
-    });
+    document.querySelectorAll('[data-agy-telemetry]').forEach(clearTelemetryAttrs);
+    const liveVid = document.getElementById('agy-live-bg-video');
+    if (liveVid) releaseVideoDecoder(liveVid);
     const liveBgLayer = document.getElementById('agy-live-bg-layer');
     if (liveBgLayer) liveBgLayer.remove();
     const styleEl = document.getElementById('antigravity-custom-theme-active');
@@ -2434,30 +2448,59 @@
     if (metricsEl) metricsEl.remove();
     const fontStyleEl = document.getElementById('agy-greeting-font-style');
     if (fontStyleEl) fontStyleEl.remove();
+    document.querySelectorAll('[data-agy-greeting]').forEach((el) => {
+      el.removeAttribute('data-agy-greeting');
+      delete el.dataset.agyGreetingOrig;
+    });
+    document.querySelectorAll('.agy-shell').forEach((sh) => {
+      sh.classList.remove('agy-revealing');
+      delete sh.dataset.agyHoleActive;
+      delete sh.dataset.agySideGlass;
+      ['--agy-hole-clip', '--agy-l-glass-bg', '--agy-sidebar-w', '--agy-hdr-h', '--agy-side-l', '--agy-side-t', '--agy-side-r', '--agy-side-b'].forEach((p) => {
+        sh.style.removeProperty(p);
+      });
+    });
+    if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
+      try {
+        window.electronNative.setTitleBarOverlay({ color: '#111114', symbolColor: '#f8fafc' });
+      } catch (e) {}
+    }
+  }
+
+  function removeCustomTheme() {
+    disableThemeVisuals();
+    clearStartupWatchdog();
+    if (window.__AGY_SAVE_TIMER__) {
+      clearTimeout(window.__AGY_SAVE_TIMER__);
+      window.__AGY_SAVE_TIMER__ = 0;
+    }
+    if (window.__AGY_MODAL_OBSERVER__) {
+      try { window.__AGY_MODAL_OBSERVER__.disconnect(); } catch (e) {}
+      window.__AGY_MODAL_OBSERVER__ = null;
+    }
+    window.__AGY_OBSERVER_ROOT__ = null;
+    if (window.__AGY_TICK_RAF__) {
+      cancelAnimationFrame(window.__AGY_TICK_RAF__);
+      window.__AGY_TICK_RAF__ = 0;
+    }
+    if (window.__AGY_TICK_TIMER__) {
+      clearTimeout(window.__AGY_TICK_TIMER__);
+      window.__AGY_TICK_TIMER__ = 0;
+    }
+    if (window.__AGY_SCROLL_AC__) {
+      try { window.__AGY_SCROLL_AC__.abort(); } catch (e) {}
+    }
+    if (window.__AGY_MODAL_AC__) {
+      try { window.__AGY_MODAL_AC__.abort(); } catch (e) {}
+      window.__AGY_MODAL_AC__ = null;
+    }
+    invalidateStateCache();
     const navBtn = document.getElementById('agy-custom-theme-sidebar-btn');
     if (navBtn) navBtn.remove();
     const settingsBtn = document.getElementById('agy-custom-theme-settings-btn');
     if (settingsBtn) settingsBtn.remove();
     const modal = document.getElementById('agy-custom-theme-modal-backdrop');
     if (modal) modal.remove();
-    document.querySelectorAll('[data-agy-greeting]').forEach((el) => {
-      el.removeAttribute('data-agy-greeting');
-      delete el.dataset.agyGreetingOrig;
-    });
-    const shell = findActiveShell();
-    if (shell) {
-      shell.classList.remove('agy-revealing');
-      delete shell.dataset.agyHoleActive;
-      delete shell.dataset.agySideGlass;
-      ['--agy-hole-clip', '--agy-l-glass-bg', '--agy-sidebar-w', '--agy-hdr-h', '--agy-side-l', '--agy-side-t', '--agy-side-r', '--agy-side-b'].forEach((p) => {
-        shell.style.removeProperty(p);
-      });
-    }
-    if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
-      try {
-        window.electronNative.setTitleBarOverlay({ color: '#111114', symbolColor: '#f8fafc' });
-      } catch (e) {}
-    }
   }
 
   window.__ANTIGRAVITY_APPLY_CUSTOM_THEME__ = applyTheme;
@@ -2560,6 +2603,7 @@
   }
 
   function syncShellMetrics() {
+    if (!getState().themeEnabled) return;
     const shell = findActiveShell();
     if (!shell) return;
     const split = shell.querySelector('[data-testid="sidebar-split"]');
@@ -2754,7 +2798,7 @@
 
   function syncEmptyGreeting(stOverride) {
     const st = stOverride || getState();
-    if (!st.tawaGreeting) {
+    if (!st.themeEnabled || !st.tawaGreeting) {
       window.__AGY_GREETING_ACTIVE__ = false;
       document.querySelectorAll('[data-agy-greeting]').forEach((el) => {
         el.removeAttribute('data-agy-greeting');
@@ -2836,7 +2880,7 @@
 
   function playRandomTaskVoice(ignoreEnabled = false) {
     const st = getState();
-    if (!ignoreEnabled && !st.taskVoiceEnabled) return;
+    if (!ignoreEnabled && (!st.themeEnabled || !st.taskVoiceEnabled)) return;
     const pool = getMediaLibrary('audio');
     if (pool.length === 0) return;
     const choices = pool.length > 1
@@ -2850,6 +2894,14 @@
   window.__ANTIGRAVITY_TEST_TASK_VOICE__ = () => playRandomTaskVoice(true);
 
   function syncTaskCompletionVoice() {
+    if (!getState().themeEnabled) {
+      taskVoiceState.wasRunning = false;
+      if (window.__AGY_TASK_COMPLETE_TIMER__) {
+        clearTimeout(window.__AGY_TASK_COMPLETE_TIMER__);
+        window.__AGY_TASK_COMPLETE_TIMER__ = null;
+      }
+      return;
+    }
     if (location.href !== taskVoiceState.lastUrl) {
       taskVoiceState.lastUrl = location.href;
       taskVoiceState.urlChangedAt = Date.now();
@@ -3093,7 +3145,7 @@
   function syncWorkingTelemetry(stOverride) {
     const st = stOverride || getState();
     const style = WORKING_STYLES[st.workingStyle] ? st.workingStyle : 'mecha';
-    if (style === 'default' || !st.mechaWorking) {
+    if (!st.themeEnabled || style === 'default' || !st.mechaWorking) {
       clearMechaTelemetryTimer();
       document.querySelectorAll('[data-agy-telemetry]').forEach(clearTelemetryAttrs);
       return;
@@ -3108,7 +3160,7 @@
       window.__AGY_TELEM_TIMER__ = setInterval(() => {
         if (document.hidden) return;
         const curSt = getState();
-        if (curSt.workingStyle === 'default' || !curSt.mechaWorking) {
+        if (!curSt.themeEnabled || curSt.workingStyle === 'default' || !curSt.mechaWorking) {
           clearMechaTelemetryTimer();
           document.querySelectorAll('[data-agy-telemetry]').forEach(clearTelemetryAttrs);
           return;
@@ -3124,6 +3176,17 @@
   }
 
   function tick(forceMetrics = false) {
+    const st = getState();
+    injectMainSidebarButton();
+    injectSettingsModalButton();
+    if (!st.themeEnabled) {
+      if (document.getElementById('antigravity-custom-theme-active')
+        || document.getElementById('antigravity-custom-theme-metrics')
+        || document.getElementById('agy-live-bg-layer')) {
+        disableThemeVisuals();
+      }
+      return;
+    }
     const activeShell = findActiveShell();
     if (activeShell) {
       const liveLayer = document.getElementById('agy-live-bg-layer');
@@ -3131,8 +3194,6 @@
         applyTheme({}, { skipSave: true });
       }
     }
-    injectMainSidebarButton();
-    injectSettingsModalButton();
     hookSidebarScroll();
     hookShellMetrics(forceMetrics);
     syncEmptyAgentResponses(false);
@@ -3143,7 +3204,7 @@
   }
 
   function scheduleTick(mutations) {
-    if (Array.isArray(mutations)) {
+    if (Array.isArray(mutations) && getState().themeEnabled) {
       syncEmptyAgentResponses(true);
       syncWorkingTelemetry();
     }
@@ -3180,7 +3241,7 @@
 
   window.__AGY_INTERNAL__ = {
     THEMES, BOOT_ASSETS, THEME_KEYS, DEFAULT_THEME_KEY,
-    STORAGE_THEME, STORAGE_BUBBLE, STORAGE_INPUT, STORAGE_DIMMING,
+    STORAGE_THEME, STORAGE_THEME_ENABLED, STORAGE_BUBBLE, STORAGE_INPUT, STORAGE_DIMMING,
     STORAGE_WP_ENABLED, STORAGE_WP_MODE, STORAGE_CUSTOM_WP, STORAGE_CUSTOM_VIDEO,
     STORAGE_TASK_VOICE_ENABLED, STORAGE_TASK_VOICE_VOL, STORAGE_CUSTOM_GREETINGS,
     STORAGE_USER_AVATAR, STORAGE_AGENT_AVATAR, STORAGE_GLASS_BLUR,
@@ -3240,6 +3301,12 @@
       return false;
     }
     attachDomObserver();
+    const st = getState();
+    if (!st.themeEnabled) {
+      disableThemeVisuals();
+      tick(false);
+      return true;
+    }
     if (forceApply || !document.getElementById('antigravity-custom-theme-active')) {
       applyTheme({}, { skipSave: true });
     }
@@ -3265,6 +3332,12 @@
       const st = getState();
       const shell = findActiveShell();
       const hasSidebarBtn = Boolean(document.getElementById('agy-custom-theme-sidebar-btn'));
+      if (!st.themeEnabled) {
+        if (ready && shell && hasSidebarBtn && document.readyState === 'complete') {
+          clearStartupWatchdog();
+        }
+        return;
+      }
       const hasLiveBg = !st.wpEnabled || Boolean(document.getElementById('agy-live-bg-layer'));
       const bootSettled = !st.bootIntro || Boolean(window.__AGY_BOOT_PLAYED__ || window.__AGY_BOOT_LOADING__);
       if (ready && shell && hasSidebarBtn && hasLiveBg && bootSettled && document.readyState === 'complete') {
@@ -3355,7 +3428,7 @@
     if (vid && vid.dataset.agyPausedByHidden === '1') {
       delete vid.dataset.agyPausedByHidden;
       const cur = getState();
-      if (cur.wpEnabled && cur.wpMode === 'video' && vid.getAttribute('data-src')) {
+      if (cur.themeEnabled && cur.wpEnabled && cur.wpMode === 'video' && vid.getAttribute('data-src')) {
         vid.play().catch(() => {});
       }
     }

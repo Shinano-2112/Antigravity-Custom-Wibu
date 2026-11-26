@@ -4,6 +4,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     THEME_KEYS,
     DEFAULT_THEME_KEY,
     STORAGE_THEME,
+    STORAGE_THEME_ENABLED,
     STORAGE_BUBBLE,
     STORAGE_INPUT,
     STORAGE_DIMMING,
@@ -81,6 +82,28 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     reader.readAsDataURL(file);
   }
 
+  function syncMasterToggleUi() {
+    const cur = getState();
+    const isOn = cur.themeEnabled !== false;
+    const btn = document.getElementById('agy-master-theme-toggle');
+    const lbl = document.getElementById('agy-master-toggle-label');
+    const track = document.getElementById('agy-master-toggle-track');
+    const knob = document.getElementById('agy-master-toggle-knob');
+    if (btn) {
+      btn.setAttribute('aria-checked', String(isOn));
+      btn.style.background = isOn ? 'rgba(34, 197, 94, 0.16)' : 'rgba(251, 191, 36, 0.12)';
+      btn.style.border = isOn ? '1px solid rgba(74, 222, 128, 0.45)' : '1px solid rgba(251, 191, 36, 0.38)';
+      btn.style.color = isOn ? '#bbf7d0' : '#fde68a';
+    }
+    if (lbl) lbl.textContent = isOn ? 'Theme: ON' : 'Mặc định (OFF)';
+    if (track) track.style.background = isOn ? '#22c55e' : 'rgba(113, 113, 122, 0.6)';
+    if (knob) knob.style.transform = isOn ? 'translateX(16px)' : 'translateX(0px)';
+    const banner = document.getElementById('agy-theme-disabled-banner');
+    if (banner) {
+      banner.style.display = isOn ? 'none' : 'flex';
+    }
+  }
+
   function openCustomThemeModal() {
     let backdrop = document.getElementById('agy-custom-theme-modal-backdrop');
     if (!backdrop) {
@@ -98,13 +121,21 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       `;
 
       backdrop.innerHTML = `
-        <div id="agy-custom-theme-modal-dialog" style="background: rgba(16, 12, 11, 0.97); border: 1.2px solid rgba(212, 148, 106, 0.35); border-radius: 18px; width: 100%; max-width: 900px; height: 86vh; max-height: 860px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9), 0 0 32px rgba(224, 142, 85, 0.25); font-family: system-ui, -apple-system, sans-serif;">
-          <div id="agy-custom-theme-modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 18px 26px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: rgba(22, 16, 14, 0.85);">
+        <div id="agy-custom-theme-modal-dialog" style="background: rgba(15, 16, 22, 0.97); border: 1.2px solid rgba(148, 163, 184, 0.28); border-radius: 18px; width: 100%; max-width: 900px; height: 86vh; max-height: 860px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9); font-family: system-ui, -apple-system, sans-serif;">
+          <div id="agy-custom-theme-modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: rgba(20, 22, 30, 0.92); gap: 12px; flex-wrap: wrap;">
             <div style="display: flex; align-items: center; gap: 10px;">
               <span style="font-size: 17px; font-weight: 600; color: #f4f4f5; letter-spacing: -0.2px;">Custom Theme Studio</span>
-              <span id="agy-custom-theme-badge" style="font-size: 11.5px; padding: 2.5px 9px; border-radius: 9999px; background: rgba(224, 142, 85, 0.2); color: #e08e55; font-weight: 500; border: 1px solid rgba(224, 142, 85, 0.3);">${THEME_KEYS.length} Preset${THEME_KEYS.length > 1 ? 's' : ''}</span>
+              <span id="agy-custom-theme-badge" style="font-size: 11.5px; padding: 2.5px 9px; border-radius: 9999px; background: rgba(148, 163, 184, 0.16); color: #e2e8f0; font-weight: 500; border: 1px solid rgba(148, 163, 184, 0.3);">${THEME_KEYS.length} Preset${THEME_KEYS.length > 1 ? 's' : ''}</span>
             </div>
-            <button id="agy-theme-modal-close-btn" type="button" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); color: #d4d4d8; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease;">✕</button>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <button id="agy-master-theme-toggle" type="button" role="switch" aria-checked="true" title="Bật/Tắt toàn bộ Custom Theme để quay về giao diện mặc định gốc mà không cần gỡ mod" style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px 5px 12px; border-radius: 9999px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.18s ease; user-select: none;">
+                <span id="agy-master-toggle-label">Theme: ON</span>
+                <span id="agy-master-toggle-track" style="position: relative; width: 34px; height: 18px; border-radius: 9999px; transition: background 0.18s ease; display: inline-flex; align-items: center; padding: 2px; box-sizing: border-box;">
+                  <span id="agy-master-toggle-knob" style="width: 14px; height: 14px; border-radius: 9999px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.45); transition: transform 0.18s ease; display: block;"></span>
+                </span>
+              </button>
+              <button id="agy-theme-modal-close-btn" type="button" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); color: #d4d4d8; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease;">✕</button>
+            </div>
           </div>
           <div id="agy-theme-modal-body" style="flex: 1; overflow-y: auto; height: 100%;"></div>
         </div>
@@ -120,6 +151,18 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         if (e.target === backdrop) closeModal();
       });
       backdrop.querySelector('#agy-theme-modal-close-btn').addEventListener('click', closeModal);
+      const masterToggleBtn = backdrop.querySelector('#agy-master-theme-toggle');
+      if (masterToggleBtn) {
+        masterToggleBtn.addEventListener('click', () => {
+          const nextOn = getState().themeEnabled === false;
+          applyTheme({ themeEnabled: nextOn });
+          syncMasterToggleUi();
+          if (nextOn) {
+            const modalBody = backdrop.querySelector('#agy-theme-modal-body');
+            if (modalBody) renderThemePanels(modalBody);
+          }
+        });
+      }
       if (window.__AGY_MODAL_AC__) {
         try { window.__AGY_MODAL_AC__.abort(); } catch (e) {}
       }
@@ -134,6 +177,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     backdrop.style.display = 'flex';
     const body = backdrop.querySelector('#agy-theme-modal-body');
     renderThemePanels(body);
+    syncMasterToggleUi();
   }
 
   function renderThemePanels(container) {
@@ -153,6 +197,13 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
 
     container.innerHTML = `
       <div id="agy-theme-scroll-container" style="padding: 24px 32px 48px 32px; max-width: 860px; margin: 0 auto; overflow-y: auto; height: 100%; color: #f4f4f5;">
+        <div id="agy-theme-disabled-banner" style="display: ${st.themeEnabled !== false ? 'none' : 'flex'}; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border: 1px solid rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.10); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px;">
+          <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 240px;">
+            <div style="font-size: 13px; font-weight: 600; color: #fde68a;">Custom Theme đang tạm tắt — đang dùng giao diện mặc định gốc</div>
+            <div style="font-size: 11.5px; color: #d4d4d8; line-height: 1.4;">Mọi preset, ảnh/video nền, mật khẩu Boot HUD và câu chào vẫn được lưu an toàn. Gạt công tắc ON hoặc bấm nút bên cạnh để bật lại ngay.</div>
+          </div>
+          <button id="agy-theme-reenable-btn" type="button" style="padding: 6px 14px; border-radius: 8px; background: #22c55e; color: #052e16; font-weight: 700; font-size: 12px; border: none; cursor: pointer; white-space: nowrap;">Bật lại Theme ngay</button>
+        </div>
         <div style="border: 1px solid ${mainTheme.borderColor}; background: ${mainTheme.cardBg || 'rgba(22, 16, 14, 0.72)'}; border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
@@ -363,7 +414,10 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         <div style="border: 1px solid ${mainTheme.borderColor}; background: ${mainTheme.cardBg || 'rgba(22, 16, 14, 0.72)'}; border-radius: 12px; padding: 14px 20px; margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
             <div>
-              <div style="font-size: 14px; font-weight: 600; color: #f4f4f5; margin-bottom: 2px;">Chat Avatars (User & AI Agent)</div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 2px;">
+                <span style="font-size: 14px; font-weight: 600; color: #f4f4f5;">Chat Avatars (User & AI Agent)</span>
+                <span id="agy-av-msg" style="font-size: 11.5px; color: #93c5fd;"></span>
+              </div>
               <div style="font-size: 12px; color: #a1a1aa;">Profile badges rendered beside chat messages (auto-compressed WebP).</div>
             </div>
             <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
@@ -373,7 +427,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
                   User
                   <input id="agy-user-av-upload" type="file" accept="image/*" style="display: none;" />
                 </label>
-                <button id="agy-user-av-clear" type="button" style="padding: 4px 8px; border-radius: 7px; background: transparent; border: 1px solid rgba(255, 255, 255, 0.14); color: #a1a1aa; font-size: 11.5px; cursor: pointer;">Off</button>
+                <button id="agy-user-av-clear" type="button" style="padding: 4px 9px; border-radius: 7px; background: transparent; border: 1px solid rgba(255, 255, 255, 0.14); color: #a1a1aa; font-size: 11.5px; cursor: pointer; transition: all 0.15s ease;">Xóa</button>
               </div>
               <div style="display: flex; align-items: center; gap: 8px;">
                 <div id="agy-agent-av-preview" style="width: 30px; height: 30px; border-radius: ${st.avatarRadius}%; border: 1.5px solid ${mainTheme.secondary || mainTheme.primary}; background: rgba(255,255,255,0.06) ${effAgentAv ? `url('${effAgentAv}') center/cover no-repeat` : ''}; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #a1a1aa;">${effAgentAv ? '' : 'AI'}</div>
@@ -381,7 +435,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
                   Agent
                   <input id="agy-agent-av-upload" type="file" accept="image/*" style="display: none;" />
                 </label>
-                <button id="agy-agent-av-clear" type="button" style="padding: 4px 8px; border-radius: 7px; background: transparent; border: 1px solid rgba(255, 255, 255, 0.14); color: #a1a1aa; font-size: 11.5px; cursor: pointer;">Off</button>
+                <button id="agy-agent-av-clear" type="button" style="padding: 4px 9px; border-radius: 7px; background: transparent; border: 1px solid rgba(255, 255, 255, 0.14); color: #a1a1aa; font-size: 11.5px; cursor: pointer; transition: all 0.15s ease;">Xóa</button>
               </div>
             </div>
           </div>
@@ -772,12 +826,31 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       triggerRevealOnReady(kind);
     });
 
+    const reenableBtn = container.querySelector('#agy-theme-reenable-btn');
+    if (reenableBtn) {
+      reenableBtn.addEventListener('click', () => {
+        applyTheme({ themeEnabled: true });
+        syncMasterToggleUi();
+        renderThemePanels(container);
+      });
+    }
+
     const userAvUpload = container.querySelector('#agy-user-av-upload');
     const userAvPreview = container.querySelector('#agy-user-av-preview');
     const userAvClear = container.querySelector('#agy-user-av-clear');
     const agentAvUpload = container.querySelector('#agy-agent-av-upload');
     const agentAvPreview = container.querySelector('#agy-agent-av-preview');
     const agentAvClear = container.querySelector('#agy-agent-av-clear');
+    const avMsg = container.querySelector('#agy-av-msg');
+    let avMsgTimer = 0;
+
+    function flashAvMsg(text, color = '#93c5fd') {
+      if (!avMsg) return;
+      avMsg.style.color = color;
+      avMsg.textContent = text;
+      if (avMsgTimer) clearTimeout(avMsgTimer);
+      avMsgTimer = setTimeout(() => { if (avMsg) avMsg.textContent = ''; }, 2200);
+    }
 
     function syncAvPreview(el, url, fallbackText) {
       if (!el) return;
@@ -792,20 +865,48 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       }
     }
 
+    function syncAvatarClearBtns() {
+      const cur = getState();
+      const curTh = THEMES[cur.themeName] || THEMES[DEFAULT_THEME_KEY] || {};
+      const hasUser = Boolean(cur.userAvatar === 'none' ? '' : (cur.userAvatar || curTh.userAvatar || ''));
+      const hasAgent = Boolean(cur.agentAvatar === 'none' ? '' : (cur.agentAvatar || curTh.agentAvatar || ''));
+      const styleBtn = (btn, active, roleLabel) => {
+        if (!btn) return;
+        btn.disabled = !active;
+        btn.title = active
+          ? `Xóa avatar ${roleLabel}`
+          : `Chưa đặt avatar ${roleLabel} (bấm nút "${roleLabel}" bên cạnh để tải ảnh)`;
+        btn.style.opacity = active ? '1' : '0.42';
+        btn.style.cursor = active ? 'pointer' : 'not-allowed';
+        btn.style.borderColor = active ? 'rgba(239, 68, 68, 0.35)' : 'rgba(255, 255, 255, 0.14)';
+        btn.style.color = active ? '#fca5a5' : '#71717a';
+        btn.style.background = active ? 'rgba(239, 68, 68, 0.10)' : 'transparent';
+      };
+      styleBtn(userAvClear, hasUser, 'User');
+      styleBtn(agentAvClear, hasAgent, 'Agent');
+    }
+    syncAvatarClearBtns();
+
     if (userAvUpload) {
       userAvUpload.addEventListener('change', (e) => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
         compressAvatarFile(file, (dataUrl) => {
+          userAvUpload.value = '';
           applyTheme({ userAvatar: dataUrl });
           syncAvPreview(userAvPreview, dataUrl, 'U');
+          syncAvatarClearBtns();
+          flashAvMsg('Đã cập nhật avatar User ✓', '#86efac');
         });
       });
     }
     if (userAvClear) {
       userAvClear.addEventListener('click', () => {
+        if (userAvClear.disabled) return;
         applyTheme({ userAvatar: 'none' });
         syncAvPreview(userAvPreview, '', 'U');
+        syncAvatarClearBtns();
+        flashAvMsg('Đã xóa avatar User', '#fbbf24');
       });
     }
     if (agentAvUpload) {
@@ -813,15 +914,21 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
         compressAvatarFile(file, (dataUrl) => {
+          agentAvUpload.value = '';
           applyTheme({ agentAvatar: dataUrl });
           syncAvPreview(agentAvPreview, dataUrl, 'AI');
+          syncAvatarClearBtns();
+          flashAvMsg('Đã cập nhật avatar Agent ✓', '#86efac');
         });
       });
     }
     if (agentAvClear) {
       agentAvClear.addEventListener('click', () => {
+        if (agentAvClear.disabled) return;
         applyTheme({ agentAvatar: 'none' });
         syncAvPreview(agentAvPreview, '', 'AI');
+        syncAvatarClearBtns();
+        flashAvMsg('Đã xóa avatar Agent', '#fbbf24');
       });
     }
 
@@ -916,11 +1023,12 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
             throw new Error('Config must be a JSON object');
           }
           const allowed = {};
-          const keys = ['themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting', 'mechaWorking', 'workingStyle', 'workingTexts', 'workingIcon'];
+          const keys = ['themeEnabled', 'themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting', 'mechaWorking', 'workingStyle', 'workingTexts', 'workingIcon'];
           keys.forEach((k) => {
             if (parsed[k] !== undefined) allowed[k] = parsed[k];
           });
           applyTheme(allowed);
+          syncMasterToggleUi();
           renderThemePanels(container);
         } catch (err) {
           if (importMsg) importMsg.textContent = 'Invalid JSON: ' + err.message;
@@ -930,6 +1038,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
 
     const resetBtn = container.querySelector('#agy-reset-btn');
     resetBtn.addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_THEME_ENABLED);
       localStorage.removeItem(STORAGE_CUSTOM_WP);
       localStorage.removeItem(STORAGE_CUSTOM_VIDEO);
       localStorage.removeItem(STORAGE_WP_MODE);
@@ -956,6 +1065,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       const defTh = THEMES[DEFAULT_THEME_KEY] || {};
       const defMode = defTh.wallpaperVideo ? 'video' : 'image';
       applyTheme({
+        themeEnabled: true,
         themeName: DEFAULT_THEME_KEY,
         bubbleName: DEFAULT_THEME_KEY,
         inputStyle: 'sync',
@@ -981,6 +1091,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         workingIcon: ''
       });
       syncModeButtons(defMode);
+      syncMasterToggleUi();
       if (bootToggle) bootToggle.checked = true;
       if (sketchToggle) sketchToggle.checked = true;
       if (greetingToggle) greetingToggle.checked = true;
@@ -995,6 +1106,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
       if (uploadStatus) uploadStatus.textContent = '';
       syncAvPreview(userAvPreview, defTh.userAvatar || '', 'U');
       syncAvPreview(agentAvPreview, defTh.agentAvatar || '', 'AI');
+      syncAvatarClearBtns();
       if (userAvPreview) userAvPreview.style.borderRadius = '50%';
       if (agentAvPreview) agentAvPreview.style.borderRadius = '50%';
       if (slider) slider.value = 69;

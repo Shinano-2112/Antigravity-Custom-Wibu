@@ -29,6 +29,10 @@ Trình tùy biến giao diện nền động, màn hình khởi động (Boot HU
 - **Tùy biến trạng thái `Working` Full Option ngay trong Custom Theme Studio (`⚡ Working`):**
   - Chọn nhanh 5 kiểu hiển thị kèm **khung xem trước trực tiếp (Live Preview)** ngay trong Studio: **Mecha Telemetry** *(Sci-Fi monospace + thanh năng lượng + đồng hồ thực)*, **Schale HUD Pill** *(viên thuốc HUD + sóng equalizer)*, **Starlight Shimmer** *(trong suốt không khung + chữ ánh sao lướt)*, **Chibi + Mali** *(font viết tay Mali + icon/GIF mini nhún nhảy)* và **Mặc định**.
   - Cho phép tự soạn danh sách câu trạng thái tùy chỉnh (để trống tự xoay bộ câu phong cách **Sensei** theo từng style) và nạp **GIF/WebP/PNG Chibi mini** qua Media Server cục bộ — vẫn giữ **0 `:has()`**, **0 live blur** và tự ngắt timer (`0% CPU`) ngay khi xong.
+- **Công tắc Bật/Tắt nhanh toàn bộ Custom Theme (`Theme: ON` / `Mặc định (OFF)`) ngay trên thanh tiêu đề Studio:**
+  - Cho phép quay về **100% giao diện mặc định gốc** của Antigravity chỉ trong 1 cú click (tự động tháo toàn bộ CSS custom, giải phóng video nền, tắt Boot HUD/câu chào/voice và trả thanh tiêu đề về nguyên bản) mà **không cần gỡ mod hay tắt daemon**.
+  - Giữ nguyên nút **Custom theme** ở sidebar & Settings cùng toàn bộ preset, ảnh/video nền, mật khẩu Boot HUD và câu chào đã lưu — gạt lại **ON** là khôi phục tức thì (trạng thái ON/OFF được lưu bền vững qua `theme_config.json`).
+- **Tối ưu UX mục `Chat Avatars`:** Đổi nút `Off` thành `Xóa`, tự làm mờ/vô hiệu hóa khi chưa đặt avatar kèm tooltip hướng dẫn và thông báo phản hồi ngay khi tải hoặc xóa ảnh đại diện.
 
 ---
 
