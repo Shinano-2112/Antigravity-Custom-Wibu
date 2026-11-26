@@ -20,11 +20,15 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
     STORAGE_AVATAR_SIZE,
     STORAGE_AVATAR_RADIUS,
     STORAGE_BOOT_INTRO,
+    STORAGE_BOOT_OPERATOR,
+    STORAGE_BOOT_PASS_HASH,
     STORAGE_SKETCH_REVEAL,
     STORAGE_TAWA_GREETING,
     CHECK_SVG,
     INPUT_STYLES,
     escapeHtml,
+    hashBootPasscode,
+    resolveBootOperator,
     canonicalMediaKey,
     isSameMediaUrl,
     deriveMediaName,
@@ -193,6 +197,9 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
               <span id="agy-upload-status" style="font-size: 11.5px; color: #93c5fd;"></span>
             </div>
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <button id="agy-boot-auth-toggle" type="button" style="padding: 4px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid ${mainTheme.borderColor}; color: #e4e4e7; font-size: 11.5px; cursor: pointer;">
+                ${st.bootPassHash ? '🔒 Boot Pass ▾' : '🔓 Đặt Boot Pass ▾'}
+              </button>
               <button id="agy-custom-vg-toggle" type="button" style="padding: 4px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid ${mainTheme.borderColor}; color: #e4e4e7; font-size: 11.5px; cursor: pointer;">
                 Tùy chỉnh Voice &amp; Câu chào ▾
               </button>
@@ -202,6 +209,37 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
               <button id="agy-replay-reveal-btn" type="button" style="padding: 4px 10px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid ${mainTheme.borderColor}; color: #e4e4e7; font-size: 11.5px; cursor: pointer;">
                 Replay Vẽ Nền
               </button>
+            </div>
+          </div>
+          <div id="agy-boot-auth-box" style="display: none; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
+            <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <span style="font-size: 12.5px; font-weight: 600; color: #f4f4f5;">Tên truy cập / Operator</span>
+                <span id="agy-boot-op-msg" style="font-size: 11px; color: #93c5fd;"></span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <input id="agy-boot-operator-input" type="text" value="${escapeHtml(resolveBootOperator(st))}" placeholder="VD: OPERATOR hoặc SENSEI" style="flex: 1; background: rgba(0,0,0,0.38); color: #f4f4f5; border: 1px solid ${mainTheme.borderColor}; border-radius: 7px; padding: 6px 9px; font-size: 12px; outline: none;" />
+                <button id="agy-boot-operator-save" type="button" style="padding: 5px 12px; border-radius: 7px; background: ${mainTheme.primary}; color: #090d16; font-weight: 600; font-size: 11.5px; border: none; cursor: pointer; white-space: nowrap;">Lưu tên</button>
+              </div>
+              <div style="font-size: 11px; color: #71717a;">Hiển thị ở dòng 1 (TÊN TRUY CẬP / OPERATOR) và màn hình chào mừng.</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <span style="font-size: 12.5px; font-weight: 600; color: #f4f4f5;">Mật khẩu Boot HUD (UID)</span>
+                <span id="agy-boot-pass-status" style="font-size: 11px; color: ${st.bootPassHash ? '#86efac' : '#fbbf24'};">${st.bootPassHash ? 'Đã thiết lập ✓' : 'Chưa đặt mật khẩu'}</span>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <input id="agy-boot-pass-new" type="password" autocomplete="off" placeholder="${st.bootPassHash ? 'Nhập mật khẩu mới để đổi...' : 'Nhập mật khẩu muốn đặt...'}" style="flex: 1; background: rgba(0,0,0,0.38); color: #f4f4f5; border: 1px solid ${mainTheme.borderColor}; border-radius: 7px; padding: 6px 9px; font-size: 12px; outline: none;" />
+                <button id="agy-boot-pass-vis" type="button" title="Hiện / Ẩn mật khẩu" style="padding: 5px 8px; border-radius: 7px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); color: #d4d4d8; font-size: 11.5px; cursor: pointer;">👁</button>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <span id="agy-boot-auth-msg" style="font-size: 11px; color: #93c5fd;"></span>
+                <div style="display: flex; gap: 8px;">
+                  <button id="agy-boot-pass-clear" type="button" style="padding: 4px 10px; border-radius: 7px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; font-size: 11.5px; cursor: pointer;">Xóa pass</button>
+                  <button id="agy-boot-pass-save" type="button" style="padding: 4px 12px; border-radius: 7px; background: ${mainTheme.primary}; color: #090d16; font-weight: 600; font-size: 11.5px; border: none; cursor: pointer;">Lưu mật khẩu</button>
+                </div>
+              </div>
+              <div style="font-size: 11px; color: #71717a;">Lưu dạng hash SHA-256 vào theme_config.json (chỉ 1 chế độ nhập pass, Level ∞).</div>
             </div>
           </div>
           <div id="agy-custom-vg-box" style="display: none; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
@@ -746,7 +784,9 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
 
     if (exportBtn) {
       exportBtn.addEventListener('click', () => {
-        const json = JSON.stringify(getState(), null, 2);
+        const exportObj = { ...getState() };
+        delete exportObj.bootPassHash;
+        const json = JSON.stringify(exportObj, null, 2);
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
           navigator.clipboard.writeText(json).then(() => {
             exportBtn.textContent = 'Copied ✓';
@@ -779,7 +819,7 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
             throw new Error('Config must be a JSON object');
           }
           const allowed = {};
-          const keys = ['themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'sketchReveal', 'tawaGreeting'];
+          const keys = ['themeName', 'bubbleName', 'inputStyle', 'dimming', 'wpEnabled', 'wpMode', 'customWp', 'customVideo', 'savedImages', 'savedVideos', 'taskVoices', 'taskVoiceEnabled', 'taskVoiceVol', 'customGreetings', 'userAvatar', 'agentAvatar', 'glassBlur', 'avatarSize', 'avatarRadius', 'bootIntro', 'bootOperator', 'sketchReveal', 'tawaGreeting'];
           keys.forEach((k) => {
             if (parsed[k] !== undefined) allowed[k] = parsed[k];
           });
@@ -966,6 +1006,110 @@ window.__AGY_LAZY_STUDIO__ = function(ctx) {
         if (taskVoiceToggle) taskVoiceToggle.checked = true;
         if (uploadStatus) uploadStatus.textContent = `Đã thêm ${files.length} voice (${nextVoices.length} tổng)!`;
         renderTaskVoiceList();
+      });
+    }
+
+    const bootAuthToggle = container.querySelector('#agy-boot-auth-toggle');
+    const bootAuthBox = container.querySelector('#agy-boot-auth-box');
+    const bootOpInput = container.querySelector('#agy-boot-operator-input');
+    const bootOpSave = container.querySelector('#agy-boot-operator-save');
+    const bootOpMsg = container.querySelector('#agy-boot-op-msg');
+    const bootPassInput = container.querySelector('#agy-boot-pass-new');
+    const bootPassVis = container.querySelector('#agy-boot-pass-vis');
+    const bootPassSave = container.querySelector('#agy-boot-pass-save');
+    const bootPassClear = container.querySelector('#agy-boot-pass-clear');
+    const bootPassStatus = container.querySelector('#agy-boot-pass-status');
+    const bootAuthMsg = container.querySelector('#agy-boot-auth-msg');
+
+    function syncBootAuthLabels() {
+      const hasP = Boolean(getState().bootPassHash);
+      const isOpen = bootAuthBox && bootAuthBox.style.display !== 'none';
+      if (bootAuthToggle) {
+        bootAuthToggle.textContent = `${hasP ? '🔒 Boot Pass' : '🔓 Đặt Boot Pass'} ${isOpen ? '▴' : '▾'}`;
+      }
+      if (bootPassStatus) {
+        bootPassStatus.textContent = hasP ? 'Đã thiết lập ✓' : 'Chưa đặt mật khẩu';
+        bootPassStatus.style.color = hasP ? '#86efac' : '#fbbf24';
+      }
+      if (bootPassInput) {
+        bootPassInput.placeholder = hasP ? 'Nhập mật khẩu mới để đổi...' : 'Nhập mật khẩu muốn đặt...';
+      }
+    }
+
+    if (bootAuthToggle && bootAuthBox) {
+      bootAuthToggle.addEventListener('click', () => {
+        const isHidden = bootAuthBox.style.display === 'none';
+        bootAuthBox.style.display = isHidden ? 'grid' : 'none';
+        syncBootAuthLabels();
+      });
+    }
+    if (bootOpSave && bootOpInput) {
+      const saveOp = () => {
+        const name = bootOpInput.value.trim();
+        applyTheme({ bootOperator: name });
+        if (bootOpMsg) {
+          bootOpMsg.textContent = name ? `Đã lưu: ${name.toUpperCase()}` : 'Đã đặt về mặc định';
+          setTimeout(() => { if (bootOpMsg) bootOpMsg.textContent = ''; }, 2000);
+        }
+      };
+      bootOpSave.addEventListener('click', saveOp);
+      bootOpInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveOp();
+        }
+      });
+    }
+    if (bootPassVis && bootPassInput) {
+      bootPassVis.addEventListener('click', () => {
+        const show = bootPassInput.type === 'password';
+        bootPassInput.type = show ? 'text' : 'password';
+        bootPassVis.style.color = show ? '#60a5fa' : '#d4d4d8';
+        bootPassInput.focus();
+      });
+    }
+    if (bootPassSave && bootPassInput) {
+      const savePass = () => {
+        const raw = bootPassInput.value;
+        if (!raw || !raw.trim()) {
+          if (bootAuthMsg) {
+            bootAuthMsg.style.color = '#fca5a5';
+            bootAuthMsg.textContent = 'Vui lòng nhập mật khẩu!';
+          }
+          bootPassInput.focus();
+          return;
+        }
+        const hashed = hashBootPasscode(raw);
+        applyTheme({ bootPassHash: hashed });
+        bootPassInput.value = '';
+        bootPassInput.type = 'password';
+        if (bootPassVis) bootPassVis.style.color = '#d4d4d8';
+        syncBootAuthLabels();
+        if (bootAuthMsg) {
+          bootAuthMsg.style.color = '#86efac';
+          bootAuthMsg.textContent = 'Đã lưu mật khẩu mới ✓';
+          setTimeout(() => { if (bootAuthMsg) bootAuthMsg.textContent = ''; }, 2400);
+        }
+      };
+      bootPassSave.addEventListener('click', savePass);
+      bootPassInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          savePass();
+        }
+      });
+    }
+    if (bootPassClear) {
+      bootPassClear.addEventListener('click', () => {
+        localStorage.removeItem(STORAGE_BOOT_PASS_HASH);
+        applyTheme({ bootPassHash: '' });
+        if (bootPassInput) bootPassInput.value = '';
+        syncBootAuthLabels();
+        if (bootAuthMsg) {
+          bootAuthMsg.style.color = '#fbbf24';
+          bootAuthMsg.textContent = 'Đã xóa mật khẩu Boot HUD';
+          setTimeout(() => { if (bootAuthMsg) bootAuthMsg.textContent = ''; }, 2400);
+        }
       });
     }
 

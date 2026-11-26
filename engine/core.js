@@ -65,6 +65,8 @@
   const STORAGE_AVATAR_SIZE = 'agy_avatar_size_v3';
   const STORAGE_AVATAR_RADIUS = 'agy_avatar_radius_v3';
   const STORAGE_BOOT_INTRO = 'agy_boot_intro_v3';
+  const STORAGE_BOOT_OPERATOR = 'agy_boot_operator_v3';
+  const STORAGE_BOOT_PASS_HASH = 'agy_boot_pass_hash_v3';
   const STORAGE_SKETCH_REVEAL = 'agy_sketch_reveal_v3';
   const STORAGE_TAWA_GREETING = 'agy_tawa_greeting_v3';
   const GREETING_RX = /^(?:Hey\s+[^,]{1,40},\s+what\s+should\s+we\s+build\s+today\??|Good\s+to\s+see\s+you,\s+[^.]{1,40}\.\s+What'?s\s+next\??|What\s+(?:should|are)\s+we\s+build(?:ing)?\s+today\??|Welcome\s+back[,.!\s]+[^.!?]{0,40}(?:[.!?]\s*(?:Where\s+should\s+we\s+pick\s+up|What'?s\s+next|What\s+should\s+we\s+build)[^.!?]{0,40}[.!?]?)?|Where\s+should\s+we\s+pick\s+up\??|Ready\s+(?:to\s+build|when\s+you\s+are)[,.!\s]*.*)$/i;
@@ -97,6 +99,74 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function hashBootPasscode(raw) {
+    const str = String(raw ?? '');
+    if (!str) return '';
+    const msg = 'agy-boot-hud-v1:' + str;
+    const bytes = typeof TextEncoder !== 'undefined'
+      ? Array.from(new TextEncoder().encode(msg))
+      : Array.from(unescape(encodeURIComponent(msg)), (c) => c.charCodeAt(0));
+    const K = [
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ];
+    let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+    let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+    const bitLen = bytes.length * 8;
+    bytes.push(0x80);
+    while ((bytes.length % 64) !== 56) bytes.push(0);
+    const hiLen = Math.floor(bitLen / 0x100000000);
+    const loLen = bitLen >>> 0;
+    bytes.push(
+      (hiLen >>> 24) & 0xff, (hiLen >>> 16) & 0xff, (hiLen >>> 8) & 0xff, hiLen & 0xff,
+      (loLen >>> 24) & 0xff, (loLen >>> 16) & 0xff, (loLen >>> 8) & 0xff, loLen & 0xff
+    );
+    const w = new Int32Array(64);
+    for (let i = 0; i < bytes.length; i += 64) {
+      for (let j = 0; j < 16; j++) {
+        const o = i + j * 4;
+        w[j] = (bytes[o] << 24) | (bytes[o + 1] << 16) | (bytes[o + 2] << 8) | bytes[o + 3];
+      }
+      for (let j = 16; j < 64; j++) {
+        const x = w[j - 15], y = w[j - 2];
+        const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+        const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+        w[j] = (w[j - 16] + s0 + w[j - 7] + s1) | 0;
+      }
+      let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+      for (let j = 0; j < 64; j++) {
+        const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+        const ch = (e & f) ^ (~e & g);
+        const t1 = (h + S1 + ch + K[j] + w[j]) | 0;
+        const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const t2 = (S0 + maj) | 0;
+        h = g; g = f; f = e; e = (d + t1) | 0;
+        d = c; c = b; b = a; a = (t1 + t2) | 0;
+      }
+      h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0;
+      h4 = (h4 + e) | 0; h5 = (h5 + f) | 0; h6 = (h6 + g) | 0; h7 = (h7 + h) | 0;
+    }
+    return 'sha256:' + [h0, h1, h2, h3, h4, h5, h6, h7]
+      .map((v) => (v >>> 0).toString(16).padStart(8, '0')).join('');
+  }
+
+  function resolveBootOperator(stOverride) {
+    const st = stOverride || getState();
+    const custom = String(st.bootOperator || '').trim();
+    if (custom) return custom;
+    const osUser = (typeof window !== 'undefined' && window.__AGY_OS_USER__)
+      ? String(window.__AGY_OS_USER__).trim()
+      : '';
+    return osUser || 'SENSEI';
   }
 
   function canonicalMediaKey(urlStr) {
@@ -360,6 +430,8 @@
     const bootIntro = localStorage.getItem(STORAGE_BOOT_INTRO) !== null
       ? localStorage.getItem(STORAGE_BOOT_INTRO) !== 'false'
       : (init.bootIntro !== undefined ? init.bootIntro : true);
+    const bootOperator = localStorage.getItem(STORAGE_BOOT_OPERATOR) ?? init.bootOperator ?? '';
+    const bootPassHash = localStorage.getItem(STORAGE_BOOT_PASS_HASH) ?? init.bootPassHash ?? '';
     const sketchReveal = localStorage.getItem(STORAGE_SKETCH_REVEAL) !== null
       ? localStorage.getItem(STORAGE_SKETCH_REVEAL) !== 'false'
       : (init.sketchReveal !== undefined ? init.sketchReveal : true);
@@ -371,7 +443,7 @@
       customWp, customVideo, savedImages, savedVideos,
       taskVoices, taskVoiceEnabled, taskVoiceVol, customGreetings,
       userAvatar, agentAvatar, glassBlur, avatarSize, avatarRadius,
-      bootIntro, sketchReveal, tawaGreeting
+      bootIntro, bootOperator, bootPassHash, sketchReveal, tawaGreeting
     };
     window.__AGY_STATE_CACHE__ = cached;
     return cached;
@@ -964,7 +1036,7 @@
     }
     window.__AGY_BOOT_PLAYED__ = true;
     loadLazyModule('boot')
-      .then((fn) => { if (typeof fn === 'function') fn(window.__AGY_INTERNAL__, forceReplay); })
+      .then((fn) => { if (typeof fn === 'function') fn(window.__AGY_INTERNAL__, true); })
       .catch(() => {
         window.__AGY_BOOT_FINISHED__ = true;
         scheduleRevealWhenReady(true);
@@ -1040,6 +1112,12 @@
       }
       if (overrides.bootIntro !== undefined) {
         localStorage.setItem(STORAGE_BOOT_INTRO, String(st.bootIntro));
+      }
+      if (overrides.bootOperator !== undefined) {
+        localStorage.setItem(STORAGE_BOOT_OPERATOR, String(st.bootOperator));
+      }
+      if (overrides.bootPassHash !== undefined) {
+        localStorage.setItem(STORAGE_BOOT_PASS_HASH, String(st.bootPassHash));
       }
       if (overrides.sketchReveal !== undefined) {
         localStorage.setItem(STORAGE_SKETCH_REVEAL, String(st.sketchReveal));
@@ -1125,7 +1203,7 @@
       [class*="--shell-canvas"],
       .agy-shell div.absolute.bottom-0.pointer-events-none,
       .agy-shell [class*="z-50"] .pointer-events-none.right-full,
-      .agy-shell .bg-background:not(.settings-modal-container):not(.settings-modal-container *):not(#agy-custom-theme-modal-backdrop *) {
+      .agy-shell .bg-background:not(.settings-modal-container):not(.settings-modal-container *):not(#agy-custom-theme-modal-backdrop *):not(.surface-opaque):not([data-browser-occluder="true"]):not([role="menu"]):not([role="listbox"]) {
         background: transparent !important;
         background-color: transparent !important;
         background-image: none !important;
@@ -1567,14 +1645,14 @@
     const sidebarOuterCss = useUnifiedGlass ? `
       .agy-shell aside,
       .agy-shell [data-sidebar="true"],
-      .agy-shell .bg-sidebar {
+      .agy-shell .bg-sidebar:not(.surface-opaque):not([data-browser-occluder="true"]):not([role="menu"]):not([role="listbox"]) {
         background: transparent !important;
         backdrop-filter: none !important;
       }
     ` : `
       .agy-shell aside,
       .agy-shell [data-sidebar="true"],
-      .agy-shell .bg-sidebar {
+      .agy-shell .bg-sidebar:not(.surface-opaque):not([data-browser-occluder="true"]):not([role="menu"]):not([role="listbox"]) {
         background: ${sidebarBg} !important;
         backdrop-filter: none !important;
       }
@@ -1585,12 +1663,32 @@
 
       /* Translucent themed sidebar (unified via ::before when unifiedGlass is active) */
       ${sidebarOuterCss}
-      .agy-shell .bg-sidebar .bg-sidebar,
-      .agy-shell [data-sidebar="true"] .bg-sidebar,
+      .agy-shell .bg-sidebar .bg-sidebar:not(.surface-opaque):not([data-browser-occluder="true"]):not([role="menu"]):not([role="listbox"]),
+      .agy-shell [data-sidebar="true"] .bg-sidebar:not(.surface-opaque):not([data-browser-occluder="true"]):not([role="menu"]):not([role="listbox"]),
       .agy-shell .bg-sidebar [class*="group/headerbtn"],
       .agy-shell .bg-sidebar [class*="group/section-header"] {
         background: transparent !important;
         backdrop-filter: none !important;
+      }
+      /* Solid opaque dark/light surface for titlebar dropdowns (Antigravity/Workspace/View/Window) & floating menus */
+      .agy-shell [data-browser-occluder="true"].bg-sidebar,
+      .agy-shell [data-browser-occluder="true"].surface-opaque,
+      .agy-shell .surface-opaque.bg-sidebar,
+      .agy-shell [role="menu"].bg-sidebar,
+      .agy-shell [role="menu"].surface-opaque {
+        background: ${isLight ? 'rgba(255, 255, 255, 0.98)' : 'var(--card, #131317)'} !important;
+        background-color: ${isLight ? 'rgba(255, 255, 255, 0.98)' : 'var(--card, #131317)'} !important;
+        border: 1px solid ${isLight ? 'rgba(15, 23, 42, 0.14)' : 'rgba(255, 255, 255, 0.12)'} !important;
+        border-radius: 10px !important;
+        box-shadow: ${isLight ? '0 10px 30px rgba(15, 23, 42, 0.16)' : '0 12px 32px rgba(0, 0, 0, 0.72)'} !important;
+        backdrop-filter: none !important;
+      }
+      .agy-shell [data-browser-occluder="true"] [data-testid="title-menu-bar-option"] {
+        color: ${isLight ? '#0f172a' : '#f4f4f5'} !important;
+        text-shadow: none !important;
+      }
+      .agy-shell [data-browser-occluder="true"] [data-testid="title-menu-bar-option"]:hover {
+        background: ${isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.09)'} !important;
       }
       /* Preserve virtual list positioning; hide sticky headers only while scrolled */
       .agy-shell .bg-sidebar .agy-scrolled > .w-full.relative > .bg-sidebar[style*="position: sticky"] {
@@ -1759,8 +1857,13 @@
         z-index: 0 !important;
         pointer-events: none !important;
         overflow: hidden !important;
+        isolation: isolate !important;
         margin: 0 !important;
         padding: 0 !important;
+      }
+      /* Keep <video> on a consistent GPU shader path so Windows DirectComposition MPO does not flip brightness on hover/tooltip/menu */
+      #agy-live-bg-video {
+        filter: brightness(1.001) !important;
       }
       #agy-live-bg-layer.agy-bg-hidden {
         display: none !important;
@@ -2342,9 +2445,11 @@
     STORAGE_TASK_VOICE_ENABLED, STORAGE_TASK_VOICE_VOL, STORAGE_CUSTOM_GREETINGS,
     STORAGE_USER_AVATAR, STORAGE_AGENT_AVATAR, STORAGE_GLASS_BLUR,
     STORAGE_AVATAR_SIZE, STORAGE_AVATAR_RADIUS, STORAGE_BOOT_INTRO,
+    STORAGE_BOOT_OPERATOR, STORAGE_BOOT_PASS_HASH,
     STORAGE_SKETCH_REVEAL, STORAGE_TAWA_GREETING,
     CHECK_SVG, INPUT_STYLES,
-    escapeHtml, canonicalMediaKey, isSameMediaUrl, deriveMediaName,
+    escapeHtml, hashBootPasscode, resolveBootOperator,
+    canonicalMediaKey, isSameMediaUrl, deriveMediaName,
     getMediaLibrary, upsertSavedMedia, removeSavedMediaFromStore,
     normalizeGreetingLines, getState, resolveMediaUrl, sanitizeCssUrl,
     findActiveShell, clearRevealRaf, clearBootTimers, stopBootAudio,

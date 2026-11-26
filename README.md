@@ -1,10 +1,23 @@
-# Antigravity Custom Theme Mod — Tawa Rust Edition
+# Antigravity Custom Wibu
 
-Trình tùy biến giao diện nền động, màn hình khởi động và hiệu ứng kính mờ dựng sẵn cho **Antigravity** mà không can thiệp vào tệp cài đặt gốc (`app.asar`) của ứng dụng. Phiên bản **Tawa Rust Edition** thay thế hoàn toàn daemon Node.js, trình đóng gói Python và script VBS bằng hai tệp thực thi native (`agy-theme.exe` và `agy-theme-daemon.exe`) dùng bộ nhớ thấp và nạp tài nguyên theo nhu cầu (**Lazy HTTP**).
+Trình tùy biến giao diện nền động, màn hình khởi động (Boot HUD + khóa mật khẩu SHA-256) và hiệu ứng kính mờ dựng sẵn cho **Antigravity** mà không can thiệp vào tệp cài đặt gốc (`app.asar`) của ứng dụng. Xây dựng trên nền **Tawa Rust Edition** — thay thế hoàn toàn daemon Node.js, trình đóng gói Python và script VBS bằng hai tệp thực thi native (`agy-theme.exe` và `agy-theme-daemon.exe`) dùng bộ nhớ thấp và nạp tài nguyên theo nhu cầu (**Lazy HTTP**).
 
 ![Minh họa giao diện Antigravity Custom Theme](docs/demo.webp)
 
-> Mã nguồn này được phát triển và mở rộng dựa trên dự án mã nguồn mở [antigravity-custom-theme-skill](https://github.com/giakiet22102006/antigravity-custom-theme-skill) (giấy phép MIT).
+> Mã nguồn này được fork và mở rộng từ [furinamikuvn/antigravity-custom-theme-mod](https://github.com/furinamikuvn/antigravity-custom-theme-mod) (vốn phát triển dựa trên dự án mã nguồn mở [antigravity-custom-theme-skill](https://github.com/giakiet22102006/antigravity-custom-theme-skill), giấy phép **MIT**).
+
+---
+
+## Điểm mới & Bản sửa lỗi ở bản fork này
+
+- **Khóa mật khẩu Boot HUD (SHA-256) & tùy chỉnh Operator:** Thiết lập tên truy cập (`Operator`) và mật khẩu ngay tại màn hình `XÁC MINH DANH TÍNH` (lưu dạng hash SHA-256 trong `theme_config.json`, khóa nút `SKIP` cho đến khi xác thực thành công).
+- **Đổi mật khẩu 2 bước tuần tự trên Boot HUD (`F2` hoặc `↻ ĐỔI MÃ ĐỊNH DANH · REKEY UID`):**
+  - *Pha A (`XÁC THỰC QUYỀN ĐỔI MÃ`):* Bắt buộc xác minh đúng mật khẩu hiện tại trước khi mở bước tiếp theo.
+  - *Pha B (`THIẾT LẬP MÃ MỚI`):* Nhập mã mới + nhập lại xác nhận kèm trạng thái khớp realtime (`MATCHED ✓` / `MISMATCH` / `SAME AS CURRENT`), hỗ trợ giữ phím **`Alt`** để soi nhanh ký tự và **`Esc`** để hủy quay lại màn đăng nhập.
+- **Quản lý Boot Pass trong Custom Theme Studio:** Thêm bảng `🔒 Boot Pass` để đổi tên `Operator`, đặt hoặc xóa mật khẩu trực tiếp trong phần cài đặt.
+- **Sửa lỗi Boot Intro không tự chạy lúc vừa mở app:** Vá lỗi kiểm tra trùng cờ `__AGY_BOOT_PLAYED__` giữa `engine/core.js` và module nạp lười `engine/boot.js` giúp intro tự khởi chạy ngay khi mở Antigravity.
+- **Khắc phục lỗi nền video bị tối nháy khi hover / mở tooltip trên Windows:** Cố định thẻ `<video>` trên 1 đường render GPU nhất quán (`isolation: isolate` + `filter: brightness(1.001)`), tránh Windows DirectComposition (MPO) chuyển đổi qua lại làm lệch độ sáng nền khi tương tác UI.
+- **Sửa lỗi menu thanh tiêu đề bị trong suốt:** Khôi phục nền tối đặc (`var(--card)`) kèm viền và đổ bóng rõ nét cho các menu `Antigravity`, `Workspace`, `View`, `Window` và các popup `.surface-opaque` / `[data-browser-occluder="true"]`, vẫn giữ **0 `:has()`** và **0 live `backdrop-filter: blur()`**.
 
 ---
 
@@ -150,7 +163,10 @@ Số liệu đo trực tiếp trên cùng máy Windows và cửa sổ Antigravit
 ├── tests/
 │   └── integration_tests.rs   # 6 integration test CLI, Lazy HTTP builder, HTTP Range/upload/delete, CDP, config/MD5
 ├── engine/
-│   └── core.js                # Mã nguồn giao diện runtime (0 :has(), 0 live blur, Boot HUD, Sketch Reveal, Modal)
+│   ├── core.js                # Bộ máy giao diện runtime cốt lõi (0 :has(), 0 live blur, pre-baked glass)
+│   ├── boot.js                # Module nạp lười Boot HUD, xác thực SHA-256 và đổi mật khẩu 2 bước (Rekey)
+│   ├── reveal.js              # Module nạp lười hiệu ứng vẽ nét → loang màu (Sketch Reveal)
+│   └── studio.js              # Module nạp lười bảng cài đặt Custom Theme Studio & Boot Pass
 ├── scripts/
 │   ├── install-win.ps1        # Wrapper PowerShell gọi target/release/agy-theme.exe install
 │   └── install-unix.sh        # Wrapper Bash cho macOS / Linux

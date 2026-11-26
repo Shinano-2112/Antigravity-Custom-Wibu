@@ -1,7 +1,11 @@
 window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
   const {
     BOOT_ASSETS,
+    escapeHtml,
+    hashBootPasscode,
+    resolveBootOperator,
     getState,
+    applyTheme,
     resolveMediaUrl,
     sanitizeCssUrl,
     clearBootTimers,
@@ -11,11 +15,18 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
   } = ctx;
   function mountBootSequence(forceReplay = false) {
     const st = getState();
-    if (!forceReplay && (!st.bootIntro || window.__AGY_BOOT_PLAYED__)) {
+    if (!forceReplay && !st.bootIntro) {
       return;
     }
     window.__AGY_BOOT_PLAYED__ = true;
     teardownBootOverlay();
+
+    const operatorDisplay = resolveBootOperator(st).toUpperCase();
+    let storedPassHash = String(st.bootPassHash || '').trim();
+    let hasPass = Boolean(storedPassHash);
+    let passVerified = false;
+    let confirming = false;
+    let failedAttempts = 0;
 
     const starfieldUrl = sanitizeCssUrl(resolveMediaUrl(BOOT_ASSETS.starfieldBg || 'assets/starfield-boot-bg.jpg'));
     const iconColorUrl = resolveMediaUrl(BOOT_ASSETS.agyColorIcon || 'assets/agy-icon-color.png');
@@ -126,6 +137,7 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
         padding: 4px 8px; font-family: inherit; font-size: 10.5px; letter-spacing: 0.16em; transition: color 0.15s ease;
       }
       #agy-boot-overlay .agy-boot-skip:hover { color: #ffffff; }
+      #agy-boot-overlay .agy-boot-skip.locked { visibility: hidden; pointer-events: none; }
 
       #agy-boot-overlay .agy-boot-stage-wrap {
         position: relative; z-index: 5; flex: 1; display: flex; align-items: center; justify-content: center;
@@ -182,12 +194,73 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
       #agy-boot-overlay .agy-hud-btn.triggered::before { transform: scaleX(1); }
       #agy-boot-overlay .agy-hud-btn:hover,
       #agy-boot-overlay .agy-hud-btn.triggered { color: #000000; border-color: #ffffff; }
-      #agy-boot-overlay .agy-hud-hint { margin-top: 12px; font-size: 9.5px; color: #52525b; letter-spacing: 0.14em; }
+      #agy-boot-overlay .agy-hud-btn-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+      #agy-boot-overlay .agy-hud-btn.agy-hud-btn-ghost { border-color: rgba(255,255,255,0.16); color: #a1a1aa; padding: 9px 18px; }
+      #agy-boot-overlay .agy-hud-hint { margin-top: 12px; font-size: 9.5px; color: #52525b; letter-spacing: 0.14em; transition: color 0.2s ease; }
+      #agy-boot-overlay .agy-hud-hint.error { color: #f87171; }
+      #agy-boot-overlay .agy-hud-hint.ok { color: #86efac; }
+      #agy-boot-overlay .agy-rekey-trigger {
+        margin-top: 12px; background: transparent; border: none; border-bottom: 1px solid transparent;
+        color: #71717a; font-family: inherit; font-size: 9.5px; letter-spacing: 0.16em;
+        padding: 3px 6px; cursor: pointer; transition: color 0.18s ease, border-color 0.18s ease;
+      }
+      #agy-boot-overlay .agy-rekey-trigger:hover { color: #f4f4f5; border-bottom-color: rgba(255,255,255,0.35); }
+      #agy-boot-overlay .agy-rekey-trigger.hidden { display: none; }
 
-      #agy-boot-overlay .agy-id-table { width: 290px; padding: 12px 0; margin-bottom: 22px; display: flex; flex-direction: column; gap: 7px; font-size: 10.5px; }
-      #agy-boot-overlay .agy-id-row { display: flex; justify-content: space-between; align-items: center; }
-      #agy-boot-overlay .agy-id-row span:first-child { color: #52525b; letter-spacing: 0.14em; }
-      #agy-boot-overlay .agy-id-row span:last-child { color: #f4f4f5; font-weight: 600; letter-spacing: 0.16em; }
+      #agy-boot-overlay .agy-id-table { width: 290px; max-width: 90vw; padding: 12px 0; margin-bottom: 22px; display: flex; flex-direction: column; gap: 7px; font-size: 10.5px; }
+      #agy-boot-overlay .agy-id-table.agy-id-table-wide { width: 320px; }
+      #agy-boot-overlay .agy-match-status { color: #71717a !important; font-weight: 600; letter-spacing: 0.14em; transition: color 0.18s ease; }
+      #agy-boot-overlay .agy-match-status.ok { color: #86efac !important; }
+      #agy-boot-overlay .agy-match-status.warn { color: #fbbf24 !important; }
+      #agy-boot-overlay .agy-match-status.err { color: #f87171 !important; }
+      #agy-boot-overlay .agy-id-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+      #agy-boot-overlay .agy-id-row > span:first-child { color: #52525b; letter-spacing: 0.14em; white-space: nowrap; }
+      #agy-boot-overlay .agy-id-row > span:last-child { color: #f4f4f5; font-weight: 600; letter-spacing: 0.16em; }
+      #agy-boot-overlay .agy-id-row-pass { cursor: text; }
+      #agy-boot-overlay .agy-pass-input,
+      #agy-boot-overlay .agy-pass-input:hover,
+      #agy-boot-overlay .agy-pass-input:focus,
+      #agy-boot-overlay .agy-pass-input:focus-visible,
+      #agy-boot-overlay .agy-pass-input:active {
+        flex: 1; min-width: 60px; width: 100%;
+        background: transparent !important;
+        background-color: transparent !important;
+        border: 0 none transparent !important;
+        outline: 0 none transparent !important;
+        outline-offset: 0 !important;
+        box-shadow: none !important;
+        -webkit-appearance: none !important;
+        appearance: none !important;
+        border-radius: 0 !important;
+        padding: 0 2px 0 0 !important;
+        margin: 0 !important;
+        color: #f4f4f5;
+        font-family: inherit;
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        text-align: right;
+        caret-color: #f4f4f5;
+        user-select: text;
+        line-height: 1.4;
+      }
+      #agy-boot-overlay .agy-pass-input.error {
+        color: #f87171;
+        caret-color: #f87171;
+      }
+      #agy-boot-overlay .agy-pass-input.verified {
+        color: #60a5fa;
+      }
+      #agy-boot-overlay .agy-pass-input::-ms-reveal,
+      #agy-boot-overlay .agy-pass-input::-ms-clear { display: none !important; }
+      @keyframes agyPassShake {
+        0%, 100% { transform: translateX(0); }
+        20% { transform: translateX(-6px); }
+        40% { transform: translateX(6px); }
+        60% { transform: translateX(-4px); }
+        80% { transform: translateX(4px); }
+      }
+      #agy-boot-overlay .agy-id-row-pass.shake { animation: agyPassShake 0.34s ease; }
 
       #agy-boot-overlay .agy-icon-morph-box { position: relative; width: 112px; height: 112px; margin: 8px 0 14px; display: flex; align-items: center; justify-content: center; }
       #agy-boot-overlay .agy-icon-outline-svg { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity 0.45s ease; }
@@ -262,7 +335,7 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
             <span class="blue-rev" id="agy-hud-clock">WEB PROFILE 00:00:00</span>
           </div>
         </div>
-        <button class="agy-boot-skip" id="agy-boot-skip" type="button">SKIP ▸</button>
+        <button class="agy-boot-skip${hasPass ? ' locked' : ''}" id="agy-boot-skip" type="button">SKIP ▸</button>
       </header>
 
       <div class="agy-boot-stage-wrap">
@@ -285,14 +358,68 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
           <div style="margin-bottom:6px"><span class="agy-hud-title" data-stagger="26">XÁC MINH DANH TÍNH</span></div>
           <div class="agy-hud-subtitle" data-stagger="14">IDENTITY VERIFICATION</div>
           <div class="agy-id-table">
-            <div class="agy-id-row"><span>TÊN TRUY CẬP / OPERATOR</span><span>SENSEI</span></div>
-            <div class="agy-id-row"><span>MÃ ĐỊNH DANH / UID</span><span>0042</span></div>
+            <div class="agy-id-row"><span>TÊN TRUY CẬP / OPERATOR</span><span id="agy-boot-operator-val">${escapeHtml(operatorDisplay)}</span></div>
+            <div class="agy-id-row agy-id-row-pass" id="agy-boot-pass-row">
+              <span>MÃ ĐỊNH DANH / UID</span>
+              <input id="agy-boot-pass-input" class="agy-pass-input" type="password" autocomplete="off" spellcheck="false" aria-label="Passcode" />
+            </div>
             <div class="agy-id-row"><span>CẤP QUYỀN / LEVEL</span><span>∞</span></div>
           </div>
           <button class="agy-hud-btn" id="agy-btn-confirm" type="button">
-            <span>XÁC NHẬN &nbsp; CONFIRM IDENTITY</span>
+            <span id="agy-btn-confirm-label">${hasPass ? 'XÁC NHẬN &nbsp; CONFIRM IDENTITY' : 'LƯU &amp; XÁC NHẬN &nbsp; SET PASSCODE'}</span>
           </button>
-          <div class="agy-hud-hint">Nhấn Enter / Space hoặc bấm nút để xác nhận</div>
+          <div class="agy-hud-hint" id="agy-boot-pass-hint">${hasPass ? 'Nhập mật khẩu rồi nhấn Enter hoặc bấm nút để xác nhận' : 'Chưa đặt mật khẩu • Nhập mật khẩu mới rồi nhấn Enter để lưu &amp; vào'}</div>
+          <button class="agy-rekey-trigger${hasPass ? '' : ' hidden'}" id="agy-btn-rekey-open" type="button">↻ ĐỔI MÃ ĐỊNH DANH · REKEY UID</button>
+        </div>
+
+        <div class="agy-boot-stage" id="agy-stage-rekey-a">
+          <div style="margin-bottom:6px"><span class="agy-hud-title" data-stagger="24">XÁC THỰC QUYỀN ĐỔI MÃ</span></div>
+          <div class="agy-hud-subtitle" data-stagger="14">AUTHORIZE REKEY</div>
+          <div class="agy-id-table agy-id-table-wide">
+            <div class="agy-id-row"><span>TÊN TRUY CẬP / OPERATOR</span><span>${escapeHtml(operatorDisplay)}</span></div>
+            <div class="agy-id-row agy-id-row-pass" id="agy-rekey-cur-row">
+              <span>MÃ HIỆN TẠI / CURRENT</span>
+              <input id="agy-rekey-cur-input" class="agy-pass-input" type="password" autocomplete="off" spellcheck="false" aria-label="Current Passcode" />
+            </div>
+            <div class="agy-id-row"><span>CẤP QUYỀN / LEVEL</span><span>∞</span></div>
+          </div>
+          <div class="agy-hud-btn-row">
+            <button class="agy-hud-btn" id="agy-btn-rekey-next" type="button">
+              <span>TIẾP TỤC &nbsp; VERIFY KEY</span>
+            </button>
+            <button class="agy-hud-btn agy-hud-btn-ghost" id="agy-btn-rekey-cancel-a" type="button">
+              <span>HỦY &nbsp; ESC</span>
+            </button>
+          </div>
+          <div class="agy-hud-hint" id="agy-rekey-a-hint">Nhập mật khẩu hiện tại rồi nhấn Enter để sang bước đặt mã mới • Esc để quay lại</div>
+        </div>
+
+        <div class="agy-boot-stage" id="agy-stage-rekey-b">
+          <div style="margin-bottom:6px"><span class="agy-hud-title" data-stagger="24">THIẾT LẬP MÃ MỚI</span></div>
+          <div class="agy-hud-subtitle" data-stagger="14">ISSUE NEW UID</div>
+          <div class="agy-id-table agy-id-table-wide">
+            <div class="agy-id-row agy-id-row-pass" id="agy-rekey-new-row">
+              <span>MÃ MỚI / NEW UID</span>
+              <input id="agy-rekey-new-input" class="agy-pass-input" type="password" autocomplete="off" spellcheck="false" aria-label="New Passcode" />
+            </div>
+            <div class="agy-id-row agy-id-row-pass" id="agy-rekey-cfm-row">
+              <span>NHẬP LẠI / CONFIRM</span>
+              <input id="agy-rekey-cfm-input" class="agy-pass-input" type="password" autocomplete="off" spellcheck="false" aria-label="Confirm New Passcode" />
+            </div>
+            <div class="agy-id-row">
+              <span>TRẠNG THÁI / SYNC</span>
+              <span id="agy-rekey-match-status" class="agy-match-status">AWAITING INPUT</span>
+            </div>
+          </div>
+          <div class="agy-hud-btn-row">
+            <button class="agy-hud-btn" id="agy-btn-rekey-save" type="button">
+              <span>LƯU &amp; VÀO &nbsp; UPDATE KEY</span>
+            </button>
+            <button class="agy-hud-btn agy-hud-btn-ghost" id="agy-btn-rekey-cancel-b" type="button">
+              <span>HỦY &nbsp; ESC</span>
+            </button>
+          </div>
+          <div class="agy-hud-hint" id="agy-rekey-b-hint">Nhập mã mới rồi Enter sang ô xác nhận • Giữ Alt để soi nhanh • Esc để hủy</div>
         </div>
 
         <div class="agy-boot-stage" id="agy-stage-morph">
@@ -349,7 +476,7 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
             <img src="${iconColorUrl}" alt="Antigravity" />
           </div>
           <div class="agy-dot-grid-small agy-welcome-reveal" style="margin-bottom:8px;animation-delay:460ms">A N T I G R A V I T Y</div>
-          <div class="agy-hud-hint agy-welcome-reveal" style="color:#a1a1aa;letter-spacing:0.2em;animation-delay:540ms">CHÀO MỪNG SENSEI • SESSION READY</div>
+          <div class="agy-hud-hint agy-welcome-reveal" style="color:#a1a1aa;letter-spacing:0.2em;animation-delay:540ms">CHÀO MỪNG ${escapeHtml(operatorDisplay)} • SESSION READY</div>
         </div>
       </div>
 
@@ -361,7 +488,7 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
           <span id="agy-boot-step-label">[ 01 / 06 ] AUTHORIZATION</span>
         </div>
         <span id="agy-boot-status-bottom">AWAITING OPERATOR CONSENT</span>
-        <span>ID CONFIRMED : 0042</span>
+        <span id="agy-boot-id-footer">${hasPass ? 'ID STATUS : LOCKED' : 'ID STATUS : SETUP'}</span>
         <div class="agy-bottom-progress-track">
           <div class="agy-bottom-progress-bar" id="agy-bottom-progress"></div>
         </div>
@@ -381,6 +508,35 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
     const iconOutlineSvg = document.getElementById('agy-icon-outline-svg');
     const outlinePath = document.getElementById('agy-boot-outline-path');
     const colorFillImg = document.getElementById('agy-boot-color-fill');
+    const skipBtn = document.getElementById('agy-boot-skip');
+    const confirmBtn = document.getElementById('agy-btn-confirm');
+    const passRow = document.getElementById('agy-boot-pass-row');
+    const passInput = document.getElementById('agy-boot-pass-input');
+    const passHint = document.getElementById('agy-boot-pass-hint');
+    const idFooter = document.getElementById('agy-boot-id-footer');
+    const rekeyOpenBtn = document.getElementById('agy-btn-rekey-open');
+    const rekeyStageA = document.getElementById('agy-stage-rekey-a');
+    const rekeyStageB = document.getElementById('agy-stage-rekey-b');
+    const rekeyCurRow = document.getElementById('agy-rekey-cur-row');
+    const rekeyCurInput = document.getElementById('agy-rekey-cur-input');
+    const rekeyNextBtn = document.getElementById('agy-btn-rekey-next');
+    const rekeyCancelABtn = document.getElementById('agy-btn-rekey-cancel-a');
+    const rekeyAHint = document.getElementById('agy-rekey-a-hint');
+    const rekeyNewRow = document.getElementById('agy-rekey-new-row');
+    const rekeyNewInput = document.getElementById('agy-rekey-new-input');
+    const rekeyCfmRow = document.getElementById('agy-rekey-cfm-row');
+    const rekeyCfmInput = document.getElementById('agy-rekey-cfm-input');
+    const rekeyMatchStatus = document.getElementById('agy-rekey-match-status');
+    const rekeySaveBtn = document.getElementById('agy-btn-rekey-save');
+    const rekeyCancelBBtn = document.getElementById('agy-btn-rekey-cancel-b');
+    const rekeyBHint = document.getElementById('agy-rekey-b-hint');
+    const defaultPassHint = hasPass
+      ? 'Nhập mật khẩu rồi nhấn Enter hoặc bấm nút để xác nhận'
+      : 'Chưa đặt mật khẩu • Nhập mật khẩu mới rồi nhấn Enter để lưu & vào';
+    const defaultRekeyAHint = 'Nhập mật khẩu hiện tại rồi nhấn Enter để sang bước đặt mã mới • Esc để quay lại';
+    const defaultRekeyBHint = 'Nhập mã mới rồi Enter sang ô xác nhận • Giữ Alt để soi nhanh • Esc để hủy';
+    let rekeyAuthorized = false;
+    let rekeyBusy = false;
     const outlineTotalLen = Math.ceil(outlinePath.getTotalLength() || 673);
     outlinePath.style.strokeDasharray = `${outlineTotalLen}`;
     outlinePath.style.strokeDashoffset = `${outlineTotalLen}`;
@@ -464,17 +620,73 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
       });
     }
 
+    function setRekeyPeek(show) {
+      const nextType = show ? 'text' : 'password';
+      if (rekeyNewInput && !rekeyNewInput.disabled) rekeyNewInput.type = nextType;
+      if (rekeyCfmInput && !rekeyCfmInput.disabled) rekeyCfmInput.type = nextType;
+    }
+
+    function updateRekeyMatchStatus() {
+      if (!rekeyMatchStatus || !rekeyNewInput || !rekeyCfmInput) return;
+      const nv = rekeyNewInput.value;
+      const cv = rekeyCfmInput.value;
+      rekeyMatchStatus.classList.remove('ok', 'warn', 'err');
+      if (!nv && !cv) {
+        rekeyMatchStatus.textContent = 'AWAITING INPUT';
+        return;
+      }
+      if (nv && storedPassHash && hashBootPasscode(nv) === storedPassHash) {
+        rekeyMatchStatus.textContent = 'SAME AS CURRENT';
+        rekeyMatchStatus.classList.add('warn');
+        return;
+      }
+      if (nv && !cv) {
+        rekeyMatchStatus.textContent = 'CONFIRM REQUIRED';
+        return;
+      }
+      if (nv === cv) {
+        rekeyMatchStatus.textContent = 'MATCHED ✓';
+        rekeyMatchStatus.classList.add('ok');
+      } else {
+        rekeyMatchStatus.textContent = 'MISMATCH';
+        rekeyMatchStatus.classList.add('err');
+      }
+    }
+
+    function cleanupRekeyListeners() {
+      setRekeyPeek(false);
+      if (window.__AGY_BOOT_KEYUP__) {
+        window.removeEventListener('keyup', window.__AGY_BOOT_KEYUP__, true);
+        window.__AGY_BOOT_KEYUP__ = null;
+      }
+      if (window.__AGY_BOOT_BLUR__) {
+        window.removeEventListener('blur', window.__AGY_BOOT_BLUR__, true);
+        window.__AGY_BOOT_BLUR__ = null;
+      }
+    }
+
     function showStage(idx, withCharAnim = true) {
       currentStage = idx;
-      const ids = ['agy-stage-0', 'agy-stage-1', 'agy-stage-2', 'agy-stage-morph', 'agy-stage-morph', 'agy-stage-5', 'agy-stage-6'];
+      setRekeyPeek(false);
+      const ids = {
+        0: 'agy-stage-0',
+        1: 'agy-stage-1',
+        2: 'agy-stage-2',
+        '2a': 'agy-stage-rekey-a',
+        '2b': 'agy-stage-rekey-b',
+        3: 'agy-stage-morph',
+        4: 'agy-stage-morph',
+        5: 'agy-stage-5',
+        6: 'agy-stage-6'
+      };
       const targetId = ids[idx];
-      ['agy-stage-0', 'agy-stage-1', 'agy-stage-2', 'agy-stage-morph', 'agy-stage-5', 'agy-stage-6'].forEach((id) => {
+      ['agy-stage-0', 'agy-stage-1', 'agy-stage-2', 'agy-stage-rekey-a', 'agy-stage-rekey-b', 'agy-stage-morph', 'agy-stage-5', 'agy-stage-6'].forEach((id) => {
         const el = document.getElementById(id);
         if (!el) return;
         el.classList.remove('wipe-out', 'stage-fade-out');
         el.classList.toggle('active', id === targetId);
       });
-      if (withCharAnim && idx > 0) {
+      if (withCharAnim && idx !== 0) {
         const activeEl = document.getElementById(targetId);
         if (activeEl) {
           activeEl.querySelectorAll('[data-stagger]').forEach((el, tIdx) => {
@@ -482,21 +694,85 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
           });
         }
       }
-      const meta = [
-        ['[ 00 / 06 ] INITIALIZING', 'LOADING KERNEL...', 10],
-        ['[ 01 / 06 ] AUTHORIZATION', 'AWAITING OPERATOR CONSENT', 24],
-        ['[ 02 / 06 ] IDENTITY CHECK', 'UID 0042 / LEVEL ∞ READY', 42],
-        ['[ 03 / 06 ] ACCESS VECTOR', 'SYNCHRONIZING NEURAL CORE', 58],
-        ['[ 04 / 06 ] PERMISSION STREAM', 'STREAMING CLEARANCE KEYS', 74],
-        ['[ 05 / 06 ] VERIFY', 'PERMISSION AUTHORIZED', 90],
-        ['[ 06 / 06 ] WELCOME', 'SENSEI SESSION ACTIVE', 100]
-      ];
-      stepLabel.textContent = meta[idx][0];
-      statusBottom.textContent = meta[idx][1];
-      bottomProgress.style.width = `${meta[idx][2]}%`;
+      const meta = {
+        0: ['[ 00 / 06 ] INITIALIZING', 'LOADING KERNEL...', 10],
+        1: ['[ 01 / 06 ] AUTHORIZATION', 'AWAITING OPERATOR CONSENT', 24],
+        2: ['[ 02 / 06 ] IDENTITY CHECK', hasPass ? 'PASSCODE REQUIRED / LEVEL ∞' : 'SET PASSCODE / LEVEL ∞', 42],
+        '2a': ['[ 02A / REKEY ] AUTHORIZE', 'VERIFY CURRENT PASSCODE', 34],
+        '2b': ['[ 02B / REKEY ] NEW KEY', 'ISSUE NEW UID PASSCODE', 46],
+        3: ['[ 03 / 06 ] ACCESS VECTOR', 'SYNCHRONIZING NEURAL CORE', 58],
+        4: ['[ 04 / 06 ] PERMISSION STREAM', 'STREAMING CLEARANCE KEYS', 74],
+        5: ['[ 05 / 06 ] VERIFY', 'PERMISSION AUTHORIZED', 90],
+        6: ['[ 06 / 06 ] WELCOME', `${operatorDisplay} SESSION ACTIVE`, 100]
+      };
+      const curMeta = meta[idx] || meta[0];
+      stepLabel.textContent = curMeta[0];
+      statusBottom.textContent = curMeta[1];
+      bottomProgress.style.width = `${curMeta[2]}%`;
+      if (idx === 2 && passInput) {
+        confirming = false;
+        rekeyAuthorized = false;
+        rekeyBusy = false;
+        storedPassHash = String(getState().bootPassHash || '').trim();
+        hasPass = Boolean(storedPassHash);
+        if (rekeyOpenBtn) rekeyOpenBtn.classList.toggle('hidden', !hasPass);
+        if (idFooter) idFooter.textContent = hasPass ? 'ID STATUS : LOCKED' : 'ID STATUS : SETUP';
+        passInput.disabled = false;
+        passInput.value = '';
+        passInput.classList.remove('error', 'verified');
+        if (passHint) {
+          passHint.classList.remove('error', 'ok');
+          passHint.textContent = defaultPassHint;
+        }
+        window.__AGY_BOOT_TIMERS__.push(setTimeout(() => {
+          if (currentStage === 2 && passInput && !passInput.disabled) {
+            passInput.focus();
+          }
+        }, 60));
+      } else if (idx === '2a' && rekeyCurInput) {
+        rekeyAuthorized = false;
+        rekeyBusy = false;
+        if (idFooter) idFooter.textContent = 'REKEY MODE : STEP 1/2';
+        if (rekeyNextBtn) rekeyNextBtn.classList.remove('triggered');
+        rekeyCurInput.disabled = false;
+        rekeyCurInput.value = '';
+        rekeyCurInput.classList.remove('error', 'verified');
+        if (rekeyAHint) {
+          rekeyAHint.classList.remove('error', 'ok');
+          rekeyAHint.textContent = defaultRekeyAHint;
+        }
+        window.__AGY_BOOT_TIMERS__.push(setTimeout(() => {
+          if (currentStage === '2a' && rekeyCurInput && !rekeyCurInput.disabled) {
+            rekeyCurInput.focus();
+          }
+        }, 60));
+      } else if (idx === '2b' && rekeyNewInput && rekeyCfmInput) {
+        rekeyBusy = false;
+        if (idFooter) idFooter.textContent = 'REKEY MODE : STEP 2/2';
+        if (rekeySaveBtn) rekeySaveBtn.classList.remove('triggered');
+        rekeyNewInput.disabled = false;
+        rekeyCfmInput.disabled = false;
+        rekeyNewInput.type = 'password';
+        rekeyCfmInput.type = 'password';
+        rekeyNewInput.value = '';
+        rekeyCfmInput.value = '';
+        rekeyNewInput.classList.remove('error', 'verified');
+        rekeyCfmInput.classList.remove('error', 'verified');
+        if (rekeyBHint) {
+          rekeyBHint.classList.remove('error', 'ok');
+          rekeyBHint.textContent = defaultRekeyBHint;
+        }
+        updateRekeyMatchStatus();
+        window.__AGY_BOOT_TIMERS__.push(setTimeout(() => {
+          if (currentStage === '2b' && rekeyNewInput && !rekeyNewInput.disabled) {
+            rekeyNewInput.focus();
+          }
+        }, 60));
+      }
     }
 
     function finishBoot(instant = false) {
+      cleanupRekeyListeners();
       clearBootTimers();
       startHexStream(false);
       window.__AGY_BOOT_FINISHED__ = true;
@@ -608,8 +884,108 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
       window.__AGY_BOOT_TIMERS__.push(setTimeout(() => showStage(2, true), 580));
     });
 
-    document.getElementById('agy-btn-confirm').addEventListener('click', (e) => {
-      if (currentStage !== 2) return;
+    function triggerPassError(msg, bottomMsg) {
+      playClickSfx(210, 0.12, 0.055);
+      if (passInput) {
+        passInput.classList.remove('verified');
+        passInput.classList.add('error');
+      }
+      if (passRow) {
+        passRow.classList.remove('shake');
+        void passRow.offsetWidth;
+        passRow.classList.add('shake');
+      }
+      if (passHint) {
+        passHint.classList.add('error');
+        passHint.textContent = msg;
+      }
+      if (bottomMsg) {
+        statusBottom.textContent = bottomMsg;
+      }
+      if (passInput) {
+        passInput.focus();
+        passInput.select();
+      }
+    }
+
+    if (passRow && passInput) {
+      passRow.addEventListener('click', () => {
+        if (!passInput.disabled) passInput.focus();
+      });
+    }
+
+    const stage2El = document.getElementById('agy-stage-2');
+    if (stage2El && passInput) {
+      stage2El.addEventListener('click', (e) => {
+        if (currentStage === 2 && !passInput.disabled && !e.target.closest('button')) {
+          passInput.focus();
+        }
+      });
+    }
+
+    if (passInput) {
+      passInput.addEventListener('input', () => {
+        passInput.classList.remove('error');
+        if (passHint && passHint.classList.contains('error')) {
+          passHint.classList.remove('error');
+          passHint.textContent = defaultPassHint;
+        }
+      });
+      passInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (confirmBtn) confirmBtn.click();
+          return;
+        }
+        if (e.key !== 'Escape') {
+          e.stopPropagation();
+        }
+      });
+    }
+
+    confirmBtn.addEventListener('click', (e) => {
+      if (currentStage !== 2 || confirming) return;
+      const entered = passInput ? passInput.value : '';
+      const latestHash = String(getState().bootPassHash || '').trim();
+      storedPassHash = latestHash;
+      hasPass = Boolean(latestHash);
+
+      if (!entered || (!hasPass && !entered.trim())) {
+        triggerPassError(
+          'VUI LÒNG NHẬP MẬT KHẨU • PASSCODE REQUIRED',
+          'PASSCODE REQUIRED'
+        );
+        return;
+      }
+
+      const enteredHash = hashBootPasscode(entered);
+      if (!hasPass) {
+        applyTheme({ bootPassHash: enteredHash });
+        storedPassHash = enteredHash;
+        hasPass = true;
+      } else if (enteredHash !== storedPassHash) {
+        failedAttempts += 1;
+        triggerPassError(
+          `SAI MẬT KHẨU • ACCESS DENIED (Lần ${failedAttempts})`,
+          'ACCESS DENIED • INVALID PASSCODE'
+        );
+        return;
+      }
+
+      confirming = true;
+      passVerified = true;
+      if (passInput) {
+        passInput.disabled = true;
+        passInput.classList.remove('error');
+        passInput.classList.add('verified');
+      }
+      if (passHint) {
+        passHint.classList.remove('error');
+        passHint.textContent = 'ĐÃ XÁC MINH • IDENTITY VERIFIED';
+      }
+      if (idFooter) idFooter.textContent = `ID CONFIRMED : ${operatorDisplay}`;
+      if (skipBtn) skipBtn.classList.remove('locked');
       e.currentTarget.classList.add('triggered');
       playClickSfx(820, 0.06, 0.05);
       playTawaVoice(2);
@@ -618,26 +994,368 @@ window.__AGY_LAZY_BOOT__ = function(ctx, forceReplay = false) {
       window.__AGY_BOOT_TIMERS__.push(setTimeout(() => runAutoSequenceAfterConfirm(), 580));
     });
 
-    document.getElementById('agy-boot-skip').addEventListener('click', () => finishBoot(true));
+    function triggerFieldError(rowEl, inputEl, hintEl, msg, bottomMsg) {
+      playClickSfx(210, 0.12, 0.055);
+      if (inputEl) {
+        inputEl.classList.remove('verified');
+        inputEl.classList.add('error');
+      }
+      if (rowEl) {
+        rowEl.classList.remove('shake');
+        void rowEl.offsetWidth;
+        rowEl.classList.add('shake');
+      }
+      if (hintEl) {
+        hintEl.classList.remove('ok');
+        hintEl.classList.add('error');
+        hintEl.textContent = msg;
+      }
+      if (bottomMsg) {
+        statusBottom.textContent = bottomMsg;
+      }
+      if (inputEl) {
+        inputEl.focus();
+        inputEl.select();
+      }
+    }
+
+    function openRekeyFlow() {
+      if (currentStage !== 2 || confirming || rekeyBusy) return;
+      storedPassHash = String(getState().bootPassHash || '').trim();
+      hasPass = Boolean(storedPassHash);
+      if (!hasPass) return;
+      rekeyBusy = true;
+      playClickSfx(620, 0.06, 0.045);
+      const st2 = document.getElementById('agy-stage-2');
+      if (st2) st2.classList.add('wipe-out');
+      window.__AGY_BOOT_TIMERS__.push(setTimeout(() => {
+        triggerScanline();
+        showStage('2a', true);
+      }, 240));
+    }
+
+    function cancelRekeyToStage2() {
+      if ((currentStage !== '2a' && currentStage !== '2b') || confirming) return;
+      rekeyBusy = true;
+      rekeyAuthorized = false;
+      setRekeyPeek(false);
+      playClickSfx(420, 0.05, 0.035);
+      const activeStageEl = currentStage === '2a' ? rekeyStageA : rekeyStageB;
+      if (activeStageEl) activeStageEl.classList.add('wipe-out');
+      window.__AGY_BOOT_TIMERS__.push(setTimeout(() => {
+        triggerScanline();
+        showStage(2, true);
+      }, 220));
+    }
+
+    if (rekeyOpenBtn) {
+      rekeyOpenBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openRekeyFlow();
+      });
+    }
+
+    if (rekeyCancelABtn) rekeyCancelABtn.addEventListener('click', cancelRekeyToStage2);
+    if (rekeyCancelBBtn) rekeyCancelBBtn.addEventListener('click', cancelRekeyToStage2);
+
+    if (rekeyCurRow && rekeyCurInput) {
+      rekeyCurRow.addEventListener('click', () => {
+        if (!rekeyCurInput.disabled) rekeyCurInput.focus();
+      });
+    }
+    if (rekeyStageA && rekeyCurInput) {
+      rekeyStageA.addEventListener('click', (e) => {
+        if (currentStage === '2a' && !rekeyCurInput.disabled && !e.target.closest('button')) {
+          rekeyCurInput.focus();
+        }
+      });
+    }
+    if (rekeyCurInput) {
+      rekeyCurInput.addEventListener('input', () => {
+        rekeyCurInput.classList.remove('error');
+        if (rekeyAHint && rekeyAHint.classList.contains('error')) {
+          rekeyAHint.classList.remove('error');
+          rekeyAHint.textContent = defaultRekeyAHint;
+        }
+      });
+      rekeyCurInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (rekeyNextBtn) rekeyNextBtn.click();
+          return;
+        }
+        if (e.key !== 'Escape') e.stopPropagation();
+      });
+    }
+
+    if (rekeyNextBtn) {
+      rekeyNextBtn.addEventListener('click', () => {
+        if (currentStage !== '2a' || rekeyBusy) return;
+        const curVal = rekeyCurInput ? rekeyCurInput.value : '';
+        storedPassHash = String(getState().bootPassHash || '').trim();
+        hasPass = Boolean(storedPassHash);
+        if (!hasPass) {
+          cancelRekeyToStage2();
+          return;
+        }
+        if (!curVal) {
+          triggerFieldError(
+            rekeyCurRow,
+            rekeyCurInput,
+            rekeyAHint,
+            'VUI LÒNG NHẬP MẬT KHẨU HIỆN TẠI • CURRENT PASSCODE REQUIRED',
+            'CURRENT PASSCODE REQUIRED'
+          );
+          return;
+        }
+        if (hashBootPasscode(curVal) !== storedPassHash) {
+          triggerFieldError(
+            rekeyCurRow,
+            rekeyCurInput,
+            rekeyAHint,
+            'SAI MẬT KHẨU HIỆN TẠI • AUTHORIZATION DENIED',
+            'REKEY DENIED • INVALID CURRENT KEY'
+          );
+          return;
+        }
+
+        rekeyBusy = true;
+        rekeyAuthorized = true;
+        if (rekeyCurInput) {
+          rekeyCurInput.disabled = true;
+          rekeyCurInput.classList.remove('error');
+          rekeyCurInput.classList.add('verified');
+        }
+        if (rekeyAHint) {
+          rekeyAHint.classList.remove('error');
+          rekeyAHint.classList.add('ok');
+          rekeyAHint.textContent = 'ĐÃ XÁC THỰC • AUTHORIZED — ĐANG MỞ BƯỚC ĐẶT MÃ MỚI';
+        }
+        rekeyNextBtn.classList.add('triggered');
+        playClickSfx(740, 0.07, 0.05);
+        window.__AGY_BOOT_TIMERS__.push(setTimeout(() => {
+          if (rekeyStageA) rekeyStageA.classList.add('wipe-out');
+        }, 220));
+        window.__AGY_BOOT_TIMERS__.push(setTimeout(() => {
+          triggerScanline();
+          showStage('2b', true);
+        }, 520));
+      });
+    }
+
+    if (rekeyNewRow && rekeyNewInput) {
+      rekeyNewRow.addEventListener('click', () => {
+        if (!rekeyNewInput.disabled) rekeyNewInput.focus();
+      });
+    }
+    if (rekeyCfmRow && rekeyCfmInput) {
+      rekeyCfmRow.addEventListener('click', () => {
+        if (!rekeyCfmInput.disabled) rekeyCfmInput.focus();
+      });
+    }
+    if (rekeyNewInput) {
+      rekeyNewInput.addEventListener('input', () => {
+        rekeyNewInput.classList.remove('error');
+        if (rekeyCfmInput) rekeyCfmInput.classList.remove('error');
+        if (rekeyBHint && rekeyBHint.classList.contains('error')) {
+          rekeyBHint.classList.remove('error');
+          rekeyBHint.textContent = defaultRekeyBHint;
+        }
+        updateRekeyMatchStatus();
+      });
+      rekeyNewInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!rekeyNewInput.value.trim()) {
+            triggerFieldError(
+              rekeyNewRow,
+              rekeyNewInput,
+              rekeyBHint,
+              'VUI LÒNG NHẬP MẬT KHẨU MỚI • NEW PASSCODE REQUIRED',
+              'NEW PASSCODE REQUIRED'
+            );
+            return;
+          }
+          if (rekeyCfmInput && !rekeyCfmInput.disabled) rekeyCfmInput.focus();
+          return;
+        }
+        if (e.key !== 'Escape' && e.key !== 'Alt') e.stopPropagation();
+      });
+    }
+    if (rekeyCfmInput) {
+      rekeyCfmInput.addEventListener('input', () => {
+        rekeyCfmInput.classList.remove('error');
+        if (rekeyBHint && rekeyBHint.classList.contains('error')) {
+          rekeyBHint.classList.remove('error');
+          rekeyBHint.textContent = defaultRekeyBHint;
+        }
+        updateRekeyMatchStatus();
+      });
+      rekeyCfmInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (rekeySaveBtn) rekeySaveBtn.click();
+          return;
+        }
+        if (e.key !== 'Escape' && e.key !== 'Alt') e.stopPropagation();
+      });
+    }
+
+    if (rekeySaveBtn) {
+      rekeySaveBtn.addEventListener('click', () => {
+        if (currentStage !== '2b' || rekeyBusy || !rekeyAuthorized) return;
+        const newVal = rekeyNewInput ? rekeyNewInput.value : '';
+        const cfmVal = rekeyCfmInput ? rekeyCfmInput.value : '';
+        if (!newVal || !newVal.trim()) {
+          triggerFieldError(
+            rekeyNewRow,
+            rekeyNewInput,
+            rekeyBHint,
+            'VUI LÒNG NHẬP MẬT KHẨU MỚI • NEW PASSCODE REQUIRED',
+            'NEW PASSCODE REQUIRED'
+          );
+          return;
+        }
+        const nextHash = hashBootPasscode(newVal);
+        if (storedPassHash && nextHash === storedPassHash) {
+          triggerFieldError(
+            rekeyNewRow,
+            rekeyNewInput,
+            rekeyBHint,
+            'MÃ MỚI TRÙNG MÃ CŨ • VUI LÒNG CHỌN MÃ KHÁC',
+            'REKEY REJECTED • IDENTICAL PASSCODE'
+          );
+          return;
+        }
+        if (!cfmVal) {
+          triggerFieldError(
+            rekeyCfmRow,
+            rekeyCfmInput,
+            rekeyBHint,
+            'VUI LÒNG NHẬP LẠI ĐỂ XÁC NHẬN • CONFIRM PASSCODE REQUIRED',
+            'CONFIRMATION REQUIRED'
+          );
+          return;
+        }
+        if (newVal !== cfmVal) {
+          triggerFieldError(
+            rekeyCfmRow,
+            rekeyCfmInput,
+            rekeyBHint,
+            'MẬT KHẨU NHẬP LẠI KHÔNG KHỚP • PASSCODE MISMATCH',
+            'REKEY ERROR • PASSCODE MISMATCH'
+          );
+          return;
+        }
+
+        rekeyBusy = true;
+        confirming = true;
+        passVerified = true;
+        setRekeyPeek(false);
+        applyTheme({ bootPassHash: nextHash });
+        storedPassHash = nextHash;
+        hasPass = true;
+        if (rekeyNewInput) {
+          rekeyNewInput.disabled = true;
+          rekeyNewInput.classList.remove('error');
+          rekeyNewInput.classList.add('verified');
+        }
+        if (rekeyCfmInput) {
+          rekeyCfmInput.disabled = true;
+          rekeyCfmInput.classList.remove('error');
+          rekeyCfmInput.classList.add('verified');
+        }
+        if (rekeyMatchStatus) {
+          rekeyMatchStatus.classList.remove('warn', 'err');
+          rekeyMatchStatus.classList.add('ok');
+          rekeyMatchStatus.textContent = 'KEY UPDATED ✓';
+        }
+        if (rekeyBHint) {
+          rekeyBHint.classList.remove('error');
+          rekeyBHint.classList.add('ok');
+          rekeyBHint.textContent = 'ĐÃ CẬP NHẬT MÃ ĐỊNH DANH • PASSCODE UPDATED';
+        }
+        if (idFooter) idFooter.textContent = `ID CONFIRMED : ${operatorDisplay}`;
+        if (skipBtn) skipBtn.classList.remove('locked');
+        rekeySaveBtn.classList.add('triggered');
+        playClickSfx(860, 0.08, 0.05);
+        playTawaVoice(2);
+        window.__AGY_BOOT_TIMERS__.push(setTimeout(() => {
+          if (rekeyStageB) rekeyStageB.classList.add('wipe-out');
+        }, 260));
+        window.__AGY_BOOT_TIMERS__.push(setTimeout(() => runAutoSequenceAfterConfirm(), 600));
+      });
+    }
+
+    skipBtn.addEventListener('click', () => {
+      if (hasPass && !passVerified) return;
+      finishBoot(true);
+    });
+
+    cleanupRekeyListeners();
+    window.__AGY_BOOT_KEYUP__ = (e) => {
+      if (e.key === 'Alt') setRekeyPeek(false);
+    };
+    window.__AGY_BOOT_BLUR__ = () => setRekeyPeek(false);
+    window.addEventListener('keyup', window.__AGY_BOOT_KEYUP__, true);
+    window.addEventListener('blur', window.__AGY_BOOT_BLUR__, true);
 
     window.__AGY_BOOT_KEYDOWN__ = (e) => {
       if (overlay.classList.contains('done')) return;
-      if (e.key === 'Enter' || e.key === ' ') {
-        if (currentStage === 1) {
-          e.preventDefault();
-          e.stopPropagation();
-          const btn = document.getElementById('agy-btn-grant');
-          if (btn) btn.click();
-        } else if (currentStage === 2) {
-          e.preventDefault();
-          e.stopPropagation();
-          const btn = document.getElementById('agy-btn-confirm');
-          if (btn) btn.click();
+      if (e.key === 'Alt' && currentStage === '2b' && !rekeyBusy) {
+        e.preventDefault();
+        setRekeyPeek(true);
+        return;
+      }
+      if (currentStage === 1 && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = document.getElementById('agy-btn-grant');
+        if (btn) btn.click();
+      } else if (currentStage === 2 && e.key === 'F2') {
+        e.preventDefault();
+        e.stopPropagation();
+        openRekeyFlow();
+      } else if (currentStage === 2 && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (confirmBtn) confirmBtn.click();
+      } else if (currentStage === '2a' && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (rekeyNextBtn) rekeyNextBtn.click();
+      } else if (currentStage === '2b' && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (document.activeElement === rekeyNewInput) {
+          if (!rekeyNewInput.value || !rekeyNewInput.value.trim()) {
+            triggerFieldError(
+              rekeyNewRow,
+              rekeyNewInput,
+              rekeyBHint,
+              'VUI LÒNG NHẬP MẬT KHẨU MỚI • NEW PASSCODE REQUIRED',
+              'NEW PASSCODE REQUIRED'
+            );
+          } else if (rekeyCfmInput && !rekeyCfmInput.disabled) {
+            rekeyCfmInput.focus();
+          }
+        } else if (rekeySaveBtn) {
+          rekeySaveBtn.click();
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        finishBoot(true);
+        if (currentStage === '2a' || currentStage === '2b') {
+          cancelRekeyToStage2();
+        } else if (!hasPass || passVerified) {
+          finishBoot(true);
+        } else if (currentStage === 2 && passInput && !passInput.disabled) {
+          passInput.focus();
+        }
       }
     };
     window.addEventListener('keydown', window.__AGY_BOOT_KEYDOWN__, true);
