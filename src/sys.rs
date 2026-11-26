@@ -570,6 +570,63 @@ pub fn cleanup_windows_cdp_launch_hooks() -> Vec<String> {
     Vec::new()
 }
 
+/// Spawns a zero-polling Win32 kernel registry watcher (`RegNotifyChangeKeyValue`) on `HKCU\Software\Classes`
+/// so whenever Chromium/Electron overwrites `LocalServer32` (on notification show) or `antigravity://`
+/// (on app startup), `--remote-debugging-port=0` is restored within ~20ms at 0.00% idle CPU.
+#[cfg(windows)]
+pub fn spawn_windows_cdp_hook_watcher<F>(shutdown: &'static AtomicBool, on_healed: F)
+where
+    F: Fn(Vec<String>) + Send + 'static,
+{
+    use std::ptr;
+    use std::time::Duration;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegNotifyChangeKeyValue, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
+        REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME,
+    };
+
+    let _ = std::thread::Builder::new()
+        .name("reg-watch".into())
+        .stack_size(64 * 1024)
+        .spawn(move || {
+            let subkey_w = to_wide_nul(r"Software\Classes");
+            let mut hkey: HKEY = ptr::null_mut();
+            let rc = unsafe {
+                RegOpenKeyExW(HKEY_CURRENT_USER, subkey_w.as_ptr(), 0, KEY_READ, &mut hkey)
+            };
+            if rc != 0 || hkey.is_null() {
+                return;
+            }
+            while !shutdown.load(Ordering::Relaxed) {
+                let nrc = unsafe {
+                    RegNotifyChangeKeyValue(
+                        hkey,
+                        1,
+                        REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET,
+                        ptr::null_mut(),
+                        0,
+                    )
+                };
+                if nrc != 0 || shutdown.load(Ordering::Relaxed) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+                let healed = ensure_windows_cdp_launch_hooks();
+                if !healed.is_empty() {
+                    on_healed(healed);
+                }
+            }
+            unsafe { RegCloseKey(hkey) };
+        });
+}
+
+#[cfg(not(windows))]
+pub fn spawn_windows_cdp_hook_watcher<F>(_shutdown: &'static AtomicBool, _on_healed: F)
+where
+    F: Fn(Vec<String>) + Send + 'static,
+{
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

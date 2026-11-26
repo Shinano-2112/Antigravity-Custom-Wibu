@@ -2053,6 +2053,13 @@
         }
       }
 
+      .agy-overlay,
+      .surface-glass,
+      .settings-modal-container {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
       .settings-modal-container {
         background: ${modalBg} !important;
         border: 1px solid ${mainTheme.borderColor} !important;

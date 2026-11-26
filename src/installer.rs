@@ -383,13 +383,15 @@ $StartupLnk = Join-Path $StartupDir 'AntigravityCustomTheme.lnk'
 $TaskName = {task_q}
 $TaskRegistered = $false
 try {{
+    $CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     $Action = New-ScheduledTaskAction -Execute {daemon_q} -Argument {args_q} -WorkingDirectory {root_q}
-    $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description 'Antigravity Custom Theme Rust Daemon' -Force -ErrorAction Stop | Out-Null
+    $TriggerLogon = New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser
+    $TriggerWatchdog = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5)
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -StartWhenAvailable
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger @($TriggerLogon, $TriggerWatchdog) -Settings $Settings -Description 'Antigravity Custom Theme Rust Daemon' -Force -ErrorAction Stop | Out-Null
     Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
     $TaskRegistered = $true
-    Write-Host "[install] Windows Scheduled Task registered & started: $TaskName"
+    Write-Host "[install] Windows Scheduled Task registered & started: $TaskName ($CurrentUser)"
 }} catch {{
     Write-Host "[install] Task Scheduler unavailable ($($_.Exception.Message)); falling back to Startup shortcut."
 }}

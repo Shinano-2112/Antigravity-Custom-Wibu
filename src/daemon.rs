@@ -4,7 +4,8 @@ use crate::config::{append_log, read_config, save_config_merge};
 use crate::media::{scan_user_media, Md5Cache, MediaServer};
 use crate::paths::{read_port_info, resolve_port_file, AppPaths};
 use crate::sys::{
-    ensure_windows_cdp_launch_hooks, is_daemon_pid_alive, register_shutdown_flag, trim_working_set,
+    ensure_windows_cdp_launch_hooks, is_daemon_pid_alive, register_shutdown_flag,
+    spawn_windows_cdp_hook_watcher, trim_working_set,
 };
 use crate::ws::{WsClient, WsEvent};
 use crate::Result;
@@ -559,6 +560,20 @@ pub fn run(opts: DaemonOptions) -> Result<()> {
             &format!("Patched CDP flag on Windows launch hook: {hook}"),
             opts.echo_stdout,
         );
+    }
+
+    {
+        let log_file = paths.log_file.clone();
+        let echo = opts.echo_stdout;
+        spawn_windows_cdp_hook_watcher(&SHUTDOWN, move |healed| {
+            for hook in healed {
+                append_log(
+                    &log_file,
+                    &format!("Instant-healed CDP flag on Windows launch hook: {hook}"),
+                    echo,
+                );
+            }
+        });
     }
 
     let mut last_port: Option<u16> = None;
