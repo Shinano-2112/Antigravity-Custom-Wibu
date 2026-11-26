@@ -21,6 +21,20 @@ Trình tùy biến giao diện nền động, màn hình khởi động (Boot HU
 
 ---
 
+## Phím tắt nhanh (Boot HUD & Studio)
+
+| Khu vực | Phím tắt | Tác dụng |
+| :--- | :--- | :--- |
+| **Boot HUD (Cấp quyền)** | `Enter` / `Space` | Đi tiếp sang bước xác minh danh tính |
+| **Boot HUD (Xác minh)** | `Enter` | Xác nhận mật khẩu / Lưu pass lần đầu |
+| **Boot HUD (Xác minh)** | **`F2`** | Mở luồng **Đổi mật khẩu 2 bước (`REKEY UID`)** |
+| **Đổi MK (Pha B — Mã mới)** | **Giữ `Alt`** | Soi nhanh ký tự đang gõ (thả ra tự ẩn) |
+| **Đổi MK / Studio / Boot** | `Esc` | Quay lại màn đăng nhập / Đóng Studio / Bỏ qua (nếu không khóa) |
+
+> Xem hướng dẫn đầy đủ về toàn bộ tổ hợp phím, luồng đổi mật khẩu 2 bước và cách mở khóa khi quên pass tại **[docs/GUIDE.md](docs/GUIDE.md)**.
+
+---
+
 ## Giới thiệu kiến trúc
 
 Hệ thống vận hành theo mô hình hai lớp tách biệt nhằm giữ ổn định khi Antigravity cập nhật phiên bản mới:
@@ -175,7 +189,8 @@ Số liệu đo trực tiếp trên cùng máy Windows và cửa sổ Antigravit
 │   ├── assets/                # Video, poster, phông chữ Mali WOFF2 và âm thanh mặc định
 │   └── user_media/            # Tệp người dùng tải lên
 ├── docs/
-│   └── demo.webp              # Ảnh động minh họa giao diện cho README
+│   ├── demo.webp              # Ảnh động minh họa giao diện cho README
+│   └── GUIDE.md               # Hướng dẫn chi tiết Boot HUD, khóa SHA-256 & bảng phím tắt
 ├── references/
 │   └── theme-schema.md        # Tài liệu cấu trúc dữ liệu themes.json
 ├── agy-theme.bat              # Trình khởi chạy & menu CLI nhanh trên Windows
